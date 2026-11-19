@@ -223,7 +223,7 @@ export async function poll(
 }
 
 export function notices(c: Config, context: { events: { source: string; type: string; detail: string }[] }) {
-  if (!c.enabled) return [];
+  if (!c.enabled) throw new Error("PR 通知插件已停用；保留排队事件，等待恢复后重试");
   const unique = new Map<string, PR>();
   for (const event of context.events) {
     if (event.source !== c.sourceName || event.type !== TYPE) continue;

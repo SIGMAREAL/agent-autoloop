@@ -304,6 +304,38 @@ test("standard installed adapter runs outside the engine checkout without interp
   assert.ok(copy.read("", 1, "offline").error);
 });
 
+test("disabling the plugin never acknowledges queued PR work as successfully ignored", async () => {
+  const cfg = join(scratch, "disabled.json");
+  const ctx = join(scratch, "disabled-context.json");
+  const c = { ...config("disabled"), enabled: false };
+  writeFileSync(cfg, JSON.stringify(c));
+  writeFileSync(
+    ctx,
+    JSON.stringify({
+      events: [
+        {
+          source: c.sourceName,
+          type: "pull_request.opened",
+          detail: JSON.stringify({
+            repo,
+            number: 8,
+            title: "Waiting",
+            author: "a",
+            draft: false,
+            createdAt: "2026-11-20T01:00:00Z",
+          }),
+        },
+      ],
+    }),
+  );
+  const result = spawnSync(process.execPath, [join(entry, "main.ts"), "notify", cfg], {
+    env: { ...process.env, AGENT_AUTOLOOP_CONTEXT: ctx },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1, "a queued event must remain a failed/retryable run, not outcome:nothing");
+  assert.match(result.stderr, /停用/);
+});
+
 test(
   "a separately installed plugin completes GitHub -> hub -> worker -> FYI -> group, with private defaults local",
   {
