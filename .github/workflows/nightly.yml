@@ -55,6 +55,10 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - if: runner.os != 'Windows'
+        run: |
+          npm run feedback:install
+          npm run test:feedback
+      - if: runner.os != 'Windows'
         run: npm run test:quick
       - if: runner.os == 'Windows'
         run: npm run test:windows
