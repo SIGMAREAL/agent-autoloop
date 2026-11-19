@@ -18,13 +18,15 @@
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
     "test:quick": "node --disable-warning=ExperimentalWarning --test \"tests/!(simulation).test.ts\"",
     "typecheck": "tsc -p .",
-    "format": "prettier --write \"**/*.{ts,json,yml}\"",
-    "format:check": "prettier --check \"**/*.{ts,json,yml}\"",
+    "format": "prettier --write \"**/*.{ts,mjs,json,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,mjs,json,yml}\"",
     "test:sim": "node --disable-warning=ExperimentalWarning sim/random.ts 24301 20000",
     "test:deep": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 sim/*.test.ts",
     "test:nightly": "npm run test:deep && node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
     "benchmark": "node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
-    "test:windows": "node scripts/test-windows.ts"
+    "test:windows": "node scripts/test-windows.ts",
+    "feedback:install": "npm --prefix examples/recipes/feishu-feedback ci && npm --prefix examples/recipes/feishu-feedback/ai ci",
+    "test:feedback": "npm --prefix examples/recipes/feishu-feedback test && npm --prefix examples/recipes/feishu-feedback/ai test"
   },
   "devDependencies": {
     "@types/node": "26.6.4",

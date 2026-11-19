@@ -2,3 +2,12 @@ node_modules
 .DS_Store
 *.log
 .claude/
+
+# Feedback runtime/configuration is private and stays outside the source checkout.
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+examples/recipes/feishu-feedback/config.local.json
+examples/recipes/feishu-feedback/ai/config.local.json
+examples/recipes/feishu-feedback/.state/
