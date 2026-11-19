@@ -39,6 +39,10 @@ jobs:
         run: npm run format:check
       - if: steps.scope.outputs.scope != 'docs'
         run: npm run typecheck
+      - if: runner.os != 'Windows' && steps.scope.outputs.scope != 'docs'
+        run: |
+          npm run feedback:install
+          npm run test:feedback
       - if: runner.os != 'Windows' && (steps.scope.outputs.scope == 'normal' || steps.scope.outputs.scope == 'kernel')
         run: npm run test:quick
       - if: steps.scope.outputs.scope == 'kernel'
