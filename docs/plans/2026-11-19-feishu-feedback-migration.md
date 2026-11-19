@@ -46,3 +46,13 @@
 ## Verification note
 
 The initial parallel run exposed a test-preparation timing failure: importing the cold official Lark SDK inside a two-second request test could use up its deadline under system load. The isolated reproduction passed. SDK/HTTP imports now occur during module setup, while the unchanged 30 ms request timeout, two-second test deadline and ECONNABORTED assertion still verify the same behavior. Runtime implementation is unchanged apart from formatting.
+
+## Local handover result — 2026-11-19 20:11 +08:00
+
+- Fork code is committed and pushed. The business services run frozen commit `6b65c29b9dc11026a271b871065ec3a164346009` from SIGMAREAL/agent-autoloop; the independent upstream framework remains v1.9.3 (`dd4187a495bbd81ff5bc1c1e70de08ee11ed1fc9`).
+- All 11 production `.mjs` files match the original source after formatting. Both package locks retain the original dependency versions.
+- PASS: 44 recipe tests from both the development checkout and the frozen installation, including this Fork's actual Codex adapter. PASS: upstream quick checks (802 passed, 21 platform/explicit-real-run skips), typecheck and formatting. Independent review found no blocking Critical/Important issue.
+- Old receiver stopped before replacement started; new websocket connected at `2026-11-19T12:11:07.792Z`. All three login services run normally.
+- Original 14 feedback records, four card message IDs/sent states, binary-resource hashes and relay receipts are unchanged. Private configuration and rules hashes are unchanged. No new message, Issue or card was generated for migration testing.
+- Authenticated health after handover: 14 dispatched feedback items and four sent cards. Only public counts and verification results are recorded here; raw state snapshots, credentials, source IDs and service descriptors stay private.
+- CI, final repository ownership and removal of the old implementation are tracked by [Fork #1](https://github.com/SIGMAREAL/agent-autoloop/issues/1), not inferred from local tests.
