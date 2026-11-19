@@ -18,7 +18,7 @@ flowchart LR
 
 需要 Node 24+、已登录 github.com 的 `gh`、已配置机器人 profile 的 `lark-cli`。机器人须在目标群，有发送消息权限。读取仓库的权限由 gh 登录决定；群消息使用 bot 身份。
 
-插件只依赖本目录与 Node 内置模块，可以复制到 `~/.agent-autoloop/plugins/github-pr-notify/`。不要只复制两个入口，要保留 `core.ts` 和 `main.ts`。也可以将这个目录的固定版本链接到该安装目录；更新后重启中台加载。无需修改内核。
+插件只依赖本目录与 Node 内置模块，可以复制到 `~/.agent-autoloop/plugins/github-pr-notify/`。保留目录下所有 `.ts` 文件，包括 `core.ts`、`main.ts`、`node-path.ts`。也可以将这个目录的固定版本链接到该安装目录；更新后重启中台加载。Homebrew Node 通过稳定 opt 链接启动子进程，升级删除旧版本目录后仍能继续运行。无需修改内核。
 
 把下面的虚构配置存为 `/绝对路径/pr-notify.json`，权限 0600，父目录 0700。CLI 参数都是本人维护的数组，不使用 shell；可以用绝对程序路径，或 `["node", "/路径/cli.js"]`。
 

@@ -3,7 +3,16 @@
 // to the group; an installed plugin depends on files outside its directory; a sent card is posted again on redelivery.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +22,7 @@ import type { Adapter } from "../worker/agents.ts";
 import type { ChannelContext } from "../host/channels.ts";
 import prAgent from "../plugins/github-pr-notify/agent.ts";
 import prChannel from "../plugins/github-pr-notify/channel.ts";
+import { stablePath } from "../host/node-path.ts";
 
 const typedAgent: Adapter = prAgent;
 const typedChannel: (c: ChannelContext) => Promise<void> = prChannel;
@@ -297,11 +307,47 @@ test("standard installed adapter runs outside the engine checkout without interp
   const { default: copy } = await import(pathToFileURL(join(installed, "agent.ts")).href);
   const argv = copy.command({ command: ["notify", "/private/config.json"], prompt: "$(touch owned)", cwd: scratch });
   assert.deepEqual(argv.slice(2), ["notify", "/private/config.json"]);
-  assert.equal(argv[0], process.execPath);
+  assert.equal(argv[0], stablePath(process.execPath));
   assert.equal(argv[1], realpathSync(join(installed, "main.ts")));
   assert.deepEqual(copy.read("", null, ""), {});
   assert.deepEqual(copy.read("done", 0, ""), { text: "done" });
   assert.ok(copy.read("", 1, "offline").error);
+});
+
+test(
+  "an installed adapter survives removal of its running Homebrew Node version",
+  {
+    skip: process.platform === "win32" ? "Homebrew-specific symlink layout" : false,
+  },
+  async () => {
+    const { nodePath } = await load("node-path");
+    const prefix = join(scratch, "brew");
+    for (const version of ["24", "26"]) {
+      const bin = join(prefix, "Cellar/node", version, "bin");
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "node"), "node");
+    }
+    mkdirSync(join(prefix, "opt"));
+    const opt = join(prefix, "opt/node");
+    symlinkSync(join(prefix, "Cellar/node/26"), opt);
+    const old = join(prefix, "Cellar/node/24/bin/node");
+    assert.equal(nodePath(old, [prefix]), old, "an installed pinned version stays pinned");
+    rmSync(join(prefix, "Cellar/node/24"), { recursive: true });
+    assert.equal(nodePath(old, [prefix]), join(opt, "bin/node"), "deleted version uses the live link");
+    assert.equal(nodePath(join(prefix, "Cellar/node/26/bin/node"), [prefix]), join(opt, "bin/node"));
+    assert.equal(nodePath("/opt/custom/node", [prefix]), "/opt/custom/node");
+  },
+);
+
+test("CLI output preserves Chinese characters split between byte chunks", async () => {
+  const { run } = await load("core");
+  const fake = join(scratch, "utf8.mjs");
+  writeFileSync(
+    fake,
+    `const b=Buffer.from(JSON.stringify({title:'新 PR'})); const i=b.indexOf(Buffer.from('新'))+1;
+    process.stdout.write(b.subarray(0,i)); setTimeout(()=>process.stdout.write(b.subarray(i)),50);`,
+  );
+  assert.equal(JSON.parse(await run([process.execPath, fake], [])).title, "新 PR");
 });
 
 test("disabling the plugin never acknowledges queued PR work as successfully ignored", async () => {

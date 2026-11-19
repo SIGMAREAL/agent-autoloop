@@ -82,6 +82,8 @@ export function run(command: string[], args: string[], input?: string): Promise<
     });
     let stdout = "",
       stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
     });

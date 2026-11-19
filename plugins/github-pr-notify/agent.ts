@@ -1,9 +1,10 @@
 import { join } from "node:path";
+import { nodePath } from "./node-path.ts";
 
 // The installed plugin carries its own small interface; it does not import the engine checkout.
 export default {
   command: (turn: { command?: string[] }) => [
-    process.execPath,
+    nodePath(process.execPath),
     join(import.meta.dirname, "main.ts"),
     ...(turn.command ?? []),
   ],
