@@ -1,6 +1,6 @@
 # Agent Autoloop
 
-> This Fork adds a [Feishu → Codex Issue intake and original-chat receipt workflow](examples/recipes/feishu-feedback/README.md), maintained here separately from the upstream kernel.
+> This Fork adds [Feishu message intake, Codex answers in cards, and Issue triage](examples/recipes/feishu-feedback/README.md), maintained here separately from the upstream kernel.
 
 **Let your command-line agents pick up work and follow it through in the background — staying quiet when they can handle it, and sending you a card only when a decision is yours to make.**
 

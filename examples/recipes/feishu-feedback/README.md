@@ -1,4 +1,7 @@
-# 飞书群反馈 → Codex 建单与原群卡片
+# 飞书群消息 → Codex 回答、建单与原群卡片
+
+群内问题可由 Codex 直接回答，答案通过框架原生 notice FYI 回执显示为卡片；配置见
+[AI 侧说明](ai/README.md)与[只发送回复通道](../../../plugins/feishu-replies/README.md)。
 
 应用机器人只接收、保存和转发授权群的消息与附件。独立的 [AI 接收端](ai/README.md) 通过 Autoloop
 调用 Codex 判断、查重和创建指定仓库的 Issue，成功后发送原群卡片。转发端没有模型、OpenClaw 或 GitHub 依赖。

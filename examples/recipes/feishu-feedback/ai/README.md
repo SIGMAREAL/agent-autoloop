@@ -3,9 +3,9 @@
 此目录是独立的 AI 侧包。飞书传输端只向本机接口投递消息；AI 侧负责保存资料、
 调用 Autoloop 和提供 GitHub 工具。传输端不导入此包，也不持有 GitHub 凭据。
 
-仅允许判断反馈、查询重复项和创建指定仓库的 Issue。不安装自动修代码、提交、
-PR、合并、发布规则。用户后续授权了成功建单后的原群回执卡片；除此之外不发普通
-群聊回复。消息不按关键词或固定话题过滤，判断交给 AI，见 `feedback-instructions.md`。
+允许回答群内问题、判断反馈、查询重复项和创建指定仓库的 Issue。答案放在原生 FYI
+卡片中发回原群；成功建单继续发送固定工单回执。不安装自动修代码、提交、PR、合并、
+发布规则。消息不按关键词或固定话题过滤，是否回答或建单交给 AI，见 `feedback-instructions.md`。
 
 ## 运行前提
 
@@ -51,7 +51,8 @@ SQLite 事务中落盘后才应答；本地资源文件是可恢复缓存。向 
 ## Autoloop 配置
 
 在既有安装中使用独立反馈工作目录；`rules.json` 保留用户其他规则，新增反馈规则。
-本次新装实例只保留该规则。`sources` 必须登记该来源，配置里的来源密钥与它匹配。
+`sources` 必须登记该来源，配置里的来源密钥与它匹配。开启回答时，先按
+[卡片回复通道说明](../../../../plugins/feishu-replies/README.md)安装只发送通道。
 
 ```json
 {
@@ -75,10 +76,11 @@ SQLite 事务中落盘后才应答；本地资源文件是可恢复缓存。向 
       "prompt": "FULL_CONTENTS_OF_feedback-instructions.md",
       "resume": true,
       "maxActive": 1,
-      "tell": "never"
+      "tell": "needed",
+      "channels": ["feishu-replies"]
     }
   ],
-  "channels": {}
+  "channels": { "feishu-replies": { "name": "群问题回答" } }
 }
 ```
 
@@ -95,11 +97,22 @@ SQLite 事务中落盘后才应答；本地资源文件是可恢复缓存。向 
 Codex 成功退出后还要核实本轮每条反馈已记录决策；缺失时向 Autoloop 报告失败，
 保留原会话供重试，不以模型口头“处理完成”代替实际结果。
 
-反馈 MCP 仅有：read_context、read_feedback、find_issues、read_issue、create_issue、
-record_decision。没有任意路径、仓库或 API 参数。GitHub 工具仅允许创建 Issue，
+反馈 MCP 默认有：read_context、read_feedback、find_issues、read_issue、create_issue、
+record_decision。没有任意路径、仓库或 API 参数。GitHub 写入仅允许创建 Issue，
 必须先查询重复项；已记录决策的消息不能再次建单。不设测试词、机器人话题或
 产品类别的硬门禁；具体内容是否值得记录由 AI 结合上下文判断。
 已知敏感标识、联系方式和凭据格式不得进入 Issue 草稿。
+
+### 可选的跨仓库 PR 查询
+
+在私有 AI 配置设置 `prRepositoriesFile`，指向 0600 的 JSON 仓库数组文件，例如
+`["example/app", "example/backend"]`。配置后额外启用只读 `list_pull_requests`；未配置时仍是六工具。
+沿用已授权 PR 通知的仓库范围即可，不把真实清单提交到仓库。
+
+该工具只 GET 白名单仓库的 open PR（含草稿），返回编号、标题、作者、链接及覆盖情况，
+不读代码或 PR 正文，不暴露任意 URL/API。查询有分页、并发与时间上限；某仓库失败或到达
+上限会明确标记 `complete:false`，不能把部分结果说成全量。原有两个写工具的授权保持不变。
+更新 wrapper/MCP 固定代码路径后，下一轮会加载工具；无需另开飞书监听。
 
 ## 建单后的原群卡片
 
@@ -118,8 +131,13 @@ record_decision。没有任意路径、仓库或 API 参数。GitHub 工具仅�
 
 应用须有 `im:message:send_as_bot`。发送复用官方 CLI 的现有应用 profile，身份
 固定为 bot，目标由来源会话散列映射回现有白名单群。无需卡片交互回调、管理权限
-或新的机器人。AI 没有任意发消息工具；只有确认新建的 Issue 生成一张固定卡片，
-包含公开标题和指定仓库链接。不对普通消息或忽略/重复决策逐条回复。
+或新的机器人。AI 没有任意发消息工具；确认新建的 Issue 生成固定工单卡片，包含
+公开标题和指定仓库链接。普通问题、重复项说明或需要澄清的内容，由 AI 判断后用
+原生 notice FYI 输出答案卡片，走独立 `feishu-replies` 通道；不机械逐条回复。
+
+纯问答仍用 `ignored` 记录“无需建单”的分类，回答正文存中台卡片与回执日志。
+已记录分类不重复创建 Issue；本轮当前问题需要回答时仍完成回复，避免重派丢答案。
+原生回答卡片与下面的建单 outbox 分别由各自现成的持久机制交付，不增加第三套队列。
 
 建单决策和回执 outbox 在同一个事务落盘。发送前冻结卡片内容并记录 sending，
 使用稳定幂等键。成功保存消息编号；未知结果或发送中崩溃保留 uncertain，不自动
