@@ -25,7 +25,8 @@
     "test:nightly": "npm run test:deep && node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
     "benchmark": "node --disable-warning=ExperimentalWarning scripts/benchmark.ts",
     "test:windows": "node scripts/test-windows.ts",
-    "feedback:install": "npm --prefix plugins/feishu-replies ci --ignore-scripts && npm --prefix examples/recipes/feishu-feedback ci && npm --prefix examples/recipes/feishu-feedback/ai ci",
+    "ui:install": "npm --prefix plugins/feishu-replies ci --ignore-scripts && npm --prefix plugins/github-pr-notify ci --ignore-scripts --install-links",
+    "feedback:install": "npm run ui:install && npm --prefix examples/recipes/feishu-feedback ci && npm --prefix examples/recipes/feishu-feedback/ai ci --ignore-scripts --install-links",
     "test:feedback": "npm --prefix plugins/feishu-replies test && npm --prefix examples/recipes/feishu-feedback test && npm --prefix examples/recipes/feishu-feedback/ai test"
   },
   "devDependencies": {

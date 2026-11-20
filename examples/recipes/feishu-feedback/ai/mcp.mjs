@@ -6,8 +6,7 @@ import { sep } from "node:path";
 import { Inbox } from "./intake.mjs";
 import { FeedbackTools } from "./tools.mjs";
 import { PullRequests } from "./pull-requests.mjs";
-import { pullRequestViews } from "../../../../plugins/feishu-replies/pr-view.mjs";
-import { saveView } from "../../../../plugins/feishu-replies/artifacts.mjs";
+import { pullRequestViews, saveView } from "@agent-autoloop/feishu-a2ui";
 
 process.umask(0o077);
 const path = process.argv[process.argv.indexOf("--config") + 1];

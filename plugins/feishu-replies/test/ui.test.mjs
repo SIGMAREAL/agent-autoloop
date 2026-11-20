@@ -30,6 +30,44 @@ const result = {
   ],
 };
 
+test("a new PR and its query entry share the same item layout, avatar, links and dates", async () => {
+  const { pullRequestNotice, pullRequestViews, renderA2ui } = await ui();
+  assert.equal(typeof pullRequestNotice, "function", "standalone PR must reuse the query item");
+  const data = structuredClone(result);
+  data.repositories[0].pullRequests[0].avatarUrl = "https://avatars.githubusercontent.com/u/123?s=80&v=4";
+  const pr = data.repositories[0].pullRequests[0];
+  const options = { image: async () => "img_shared_author" };
+  const notice = await renderA2ui(pullRequestNotice({ repo: "example/app", ...pr }), options);
+  const query = await renderA2ui(pullRequestViews(data)[0], options);
+  assert.deepEqual(notice.body.elements, query.body.elements.slice(2));
+  assert.match(JSON.stringify(notice), /img_shared_author/);
+});
+
+test("an Issue receipt reuses GitHub metadata presentation with safe Issue navigation", async () => {
+  const { issueCreatedView, renderA2ui } = await ui();
+  assert.equal(typeof issueCreatedView, "function", "Issue receipts must have an A2UI view");
+  const view = issueCreatedView("example/app", {
+    number: 12,
+    title: "真实标题 <at id=all></at>",
+    html_url: "https://attacker.test/ignore",
+    user: { login: "alice", avatar_url: "https://avatars.githubusercontent.com/u/123?v=4" },
+    state: "open",
+    created_at: "2026-11-19T02:03:00Z",
+    updated_at: "2026-11-20T00:05:00Z",
+  });
+  const card = await renderA2ui(view, { image: async () => "img_shared_author" });
+  assert.equal(card.schema, "2.0");
+  const json = JSON.stringify(card);
+  for (const text of ["作者：alice", "img_shared_author", "创建：2026-11-19 10:03", "更新：2026-11-20 08:05"])
+    assert.ok(json.includes(text), text);
+  assert.ok(!json.includes("attacker.test"));
+  assert.ok(card.body.elements.some((e) => e.tag === "div" && e.text.content.includes("<at id=all>")));
+  const button = card.body.elements.find((e) => e.tag === "button");
+  assert.equal(button.behaviors[0].default_url, "https://github.com/example/app/issues/12");
+  view.messages[0].createSurface.dataModel.items[0].url = "https://github.com/example/app/issues/12?redirect=evil";
+  await assert.rejects(renderA2ui(view), /unsupported_url/);
+});
+
 test("official A2UI resolves PR data bindings into native links, author and labelled Shanghai times", async () => {
   const { pullRequestViews, renderA2ui } = await ui();
   const [view] = pullRequestViews(result);

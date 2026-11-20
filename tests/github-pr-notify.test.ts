@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, test } from "node:test";
 import type { Adapter } from "../worker/agents.ts";
@@ -49,13 +49,14 @@ const config = (name: string) => ({
   profile: "test-bot",
   chatId: "oc_test",
 });
-const pr = (number: number, title = `PR ${number}`) => ({
+const pr = (number: number, title = `PR ${number}`, avatarUrl?: string) => ({
   number,
   title,
-  user: { login: "author" },
+  user: { login: "author", avatar_url: avatarUrl },
   draft: true,
   state: "closed",
   created_at: "2026-11-20T01:00:00Z",
+  updated_at: "2026-11-20T02:00:00Z",
   html_url: "https://evil.test/ignore",
 });
 const accepted = () => ({ event: 9, duplicate: false, routed: ["PR 通知"], paused: [] });
@@ -74,13 +75,17 @@ test("first successful read establishes a baseline; only later creations emit, i
   };
   assert.equal((await poll(c, io)).baselined, 1);
   assert.equal(sent.length, 0);
-  list = [pr(15), pr(14, "🐈".repeat(220)), ...list];
+  list = [pr(15), pr(14, "🐈".repeat(220), "https://avatars.githubusercontent.com/u/123?v=4"), ...list];
   assert.equal((await poll(c, io)).emitted, 2);
   assert.deepEqual(
     sent.map((e) => JSON.parse(e.detail).number),
     [14, 15],
   );
   assert.equal(sent[0].link, `https://github.com/${repo}/pull/14`);
+  const metadata = JSON.parse(sent[0].detail);
+  assert.equal(metadata.avatarUrl, "https://avatars.githubusercontent.com/u/123?s=80&v=4");
+  assert.equal(metadata.updatedAt, "2026-11-20T02:00:00.000Z");
+  assert.equal(metadata.state, "closed");
   assert.ok(sent[0].summary.length <= 200, "hub limit counts UTF-16 units");
   await poll(c, io);
   assert.equal(sent.length, 2);
@@ -216,14 +221,50 @@ test("notify accepts only its source and allowlist; payload text cannot change U
   const receipt = notices(c, { events: [event] });
   assert.equal(receipt.length, 1);
   assert.equal(receipt[0].fyi, true);
-  const card = renderCard(c, { kind: "notice", state: "closed", text: receipt[0].text });
+  const card = await renderCard(c, { kind: "notice", state: "closed", text: receipt[0].text });
   assert.ok(JSON.stringify(card).includes('"tag":"plain_text"'));
   assert.ok(!JSON.stringify(card).includes('"tag":"lark_md"'));
-  assert.equal(card.elements.at(-1).actions[0].url, `https://github.com/${repo}/pull/8`);
+  assert.equal(
+    card.body.elements.find((e: any) => e.tag === "button").behaviors[0].default_url,
+    `https://github.com/${repo}/pull/8`,
+  );
   assert.deepEqual(notices(c, { events: [{ ...event, source: "other" }] }), []);
   assert.throws(() => notices(c, { events: [{ ...event, detail: event.detail.replace(repo, "other/repo") }] }));
-  assert.throws(() => renderCard(c, { kind: "ask", state: "open", text: receipt[0].text }));
-  assert.throws(() => renderCard(c, { kind: "notice", state: "closed", text: "private root alert" }));
+  await assert.rejects(async () => renderCard(c, { kind: "ask", state: "open", text: receipt[0].text }));
+  await assert.rejects(async () => renderCard(c, { kind: "notice", state: "closed", text: "private root alert" }));
+});
+
+test("new PR delivery uses the query's A2UI item and retains author avatar and update time", async () => {
+  const { notices, renderCard } = await load("core");
+  const { pullRequestViews, renderA2ui } = await import("../plugins/feishu-replies/ui.mjs");
+  const c = config("shared-ui");
+  const detail = {
+    repo,
+    number: 8,
+    title: "同一个 PR",
+    author: "author",
+    draft: false,
+    state: "open",
+    avatarUrl: "https://avatars.githubusercontent.com/u/123?s=80&v=4",
+    createdAt: "2026-11-20T01:00:00Z",
+    updatedAt: "2026-11-20T02:00:00Z",
+  };
+  const [notice] = notices(c, {
+    events: [{ source: c.sourceName, type: "pull_request.opened", detail: JSON.stringify(detail) }],
+  });
+  const image = async () => "img_shared_author";
+  const card = await renderCard(c, { kind: "notice", state: "closed", text: notice.text }, { image });
+  assert.equal(card.schema, "2.0", "new PR notifications must use the official A2UI adapter");
+  const [view] = pullRequestViews({
+    queriedAt: detail.updatedAt,
+    complete: true,
+    total: 1,
+    repositories: [{ repository: repo, complete: true, pullRequests: [detail] }],
+  });
+  const list = await renderA2ui(view, { image });
+  assert.deepEqual(card.body.elements, list.body.elements.slice(2));
+  assert.match(JSON.stringify(card), /img_shared_author/);
+  assert.match(JSON.stringify(card), /更新：2026-11-20 10:00/);
 });
 
 test("send-only channel uses bot identity and stable key; delivered ref is never posted again", async () => {
@@ -292,6 +333,7 @@ test("send-only channel uses bot identity and stable key; delivered ref is never
   ]);
   assert.equal(failures.length, 1);
   const sent = JSON.parse(readFileSync(capture, "utf8"));
+  assert.equal(sent.input.schema, "2.0");
   assert.ok(sent.args.includes("bot"));
   assert.ok(sent.args.includes("oc_test"));
   assert.ok(sent.args.includes("test-bot"));
@@ -304,6 +346,10 @@ test("standard installed adapter runs outside the engine checkout without interp
   assert.ok(compatible);
   const installed = join(scratch, "installed");
   cpSync(entry, installed, { recursive: true });
+  assert.ok(
+    realpathSync(join(installed, "node_modules/@agent-autoloop/feishu-a2ui")).startsWith(realpathSync(installed) + sep),
+    "the shared presentation package must travel inside the installed plugin",
+  );
   const { default: copy } = await import(pathToFileURL(join(installed, "agent.ts")).href);
   const argv = copy.command({ command: ["notify", "/private/config.json"], prompt: "$(touch owned)", cwd: scratch });
   assert.deepEqual(argv.slice(2), ["notify", "/private/config.json"]);

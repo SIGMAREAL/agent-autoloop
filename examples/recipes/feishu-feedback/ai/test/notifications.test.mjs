@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { Inbox } from "../intake.mjs";
 import { notifyOne, createCardSender } from "../notifications.mjs";
+import { renderA2ui } from "@agent-autoloop/feishu-a2ui";
 
 const id = "a".repeat(64),
   chat = "oc_example";
@@ -31,6 +32,10 @@ const issue = async () => ({
   number: 301,
   title: "清理重复助手 @all",
   html_url: "https://evil.invalid",
+  user: { login: "alice", avatar_url: "https://avatars.githubusercontent.com/u/123?v=4" },
+  state: "open",
+  created_at: "2026-11-19T02:03:00Z",
+  updated_at: "2026-11-20T00:05:00Z",
 });
 
 test("a committed new Issue queues exactly one fixed original-group card", async (t) => {
@@ -40,6 +45,7 @@ test("a committed new Issue queues exactly one fixed original-group card", async
   const options = {
     repo: "example/repo",
     getIssue: issue,
+    renderView: (view) => renderA2ui(view, { image: async () => "img_issue_author" }),
     sendCard: async (value) => {
       sent.push(value);
       return "om_receipt";
@@ -51,9 +57,12 @@ test("a committed new Issue queues exactly one fixed original-group card", async
   assert.equal(sent[0].conversationId, conversation);
   assert.ok(sent[0].key.length <= 50);
   const card = JSON.parse(sent[0].payload);
+  assert.equal(card.schema, "2.0", "the real Issue outbox must use the shared A2UI adapter");
   assert.equal(card.header.title.tag, "plain_text");
-  assert.equal(card.elements[0].text.tag, "plain_text");
-  assert.equal(card.elements[1].actions[0].url, "https://github.com/example/repo/issues/301");
+  assert.equal(card.body.elements[0].text.tag, "plain_text");
+  assert.equal(card.body.elements[1].behaviors[0].default_url, "https://github.com/example/repo/issues/301");
+  for (const field of ["作者：alice", "img_issue_author", "创建：2026-11-19 10:03", "更新：2026-11-20 08:05"])
+    assert.ok(JSON.stringify(card).includes(field), field);
   assert.deepEqual(inbox.cardCounts(), { sent: 1 });
   inbox.queueCard(id);
   assert.deepEqual(inbox.cardCounts(), { sent: 1 });
@@ -104,6 +113,17 @@ test("ordinary decisions create no outgoing card and definite rejections can be 
   assert.deepEqual(inbox.cardCounts(), { rejected: 1 });
   assert.equal(inbox.retryRejectedCards(), 1);
   assert.deepEqual(inbox.cardCounts(), { pending: 1 });
+  const frozen = inbox.nextCard().payload;
+  await notifyOne(inbox, {
+    repo: "example/repo",
+    getIssue: async () => assert.fail("a retry must not refetch frozen metadata"),
+    renderView: async () => assert.fail("a retry must not restyle a frozen payload"),
+    sendCard: async ({ payload }) => {
+      assert.equal(payload, frozen);
+      return "om_retry";
+    },
+  });
+  assert.deepEqual(inbox.cardCounts(), { sent: 1 });
 });
 
 test("the CLI sender fixes bot identity and recipient, passing card JSON through stdin", async () => {

@@ -33,7 +33,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - if: github.event_name != 'pull_request'
-        run: npm --prefix plugins/feishu-replies ci --ignore-scripts
+        run: npm run ui:install
       # A pull request that changes this file or sim/ gets the kills and the mutations; the long runs wait for the schedule.
       - if: github.event_name != 'pull_request'
         run: npm test
@@ -61,7 +61,7 @@ jobs:
           npm run feedback:install
           npm run test:feedback
       - if: runner.os == 'Windows'
-        run: npm --prefix plugins/feishu-replies ci --ignore-scripts
+        run: npm run ui:install
       - if: runner.os != 'Windows'
         run: npm run test:quick
       - if: runner.os == 'Windows'

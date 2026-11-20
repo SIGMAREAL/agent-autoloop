@@ -18,7 +18,9 @@ flowchart LR
 
 需要 Node 24+、已登录 github.com 的 `gh`、已配置机器人 profile 的 `lark-cli`。机器人须在目标群，有发送消息权限。读取仓库的权限由 gh 登录决定；群消息使用 bot 身份。
 
-插件只依赖本目录与 Node 内置模块，可以复制到 `~/.agent-autoloop/plugins/github-pr-notify/`。保留目录下所有 `.ts` 文件，包括 `core.ts`、`main.ts`、`node-path.ts`。也可以将这个目录的固定版本链接到该安装目录；更新后重启中台加载。Homebrew Node 通过稳定 opt 链接启动子进程，升级删除旧版本目录后仍能继续运行。无需修改内核。
+插件使用本目录与安装在本目录 `node_modules` 中的共享 A2UI 包，不相对引用引擎或其他已安装插件。先在源仓库运行 `npm run ui:install`，再将完整目录（含 `node_modules`）复制到 `~/.agent-autoloop/plugins/github-pr-notify/`。保留所有 `.ts` 文件，包括 `core.ts`、`main.ts`、`node-path.ts`。也可以链接已准备依赖的固定版本目录；更新后重启中台加载。Homebrew Node 通过稳定 opt 链接启动子进程，升级删除旧版本目录后仍能继续运行。无需修改内核。
+
+新 PR 通知与 PR 查询复用同一个 A2UI PR 展示单元，包含完整标题、PR 链接、GitHub 作者头像与资料链接、状态、上海时区的创建和更新时间。查询只是摘要、分页与多个相同 PR 单元的组合。Issue 创建回执也共用基础组件和飞书适配器；唯一展示源码在 [`plugins/feishu-replies`](../feishu-replies/README.md#三个场景共用一套展示)。旧排队事件缺少头像或更新时间时保留文字与未知时间，已关闭/合并的 PR 显示真实状态。
 
 把下面的虚构配置存为 `/绝对路径/pr-notify.json`，权限 0600，父目录 0700。CLI 参数都是本人维护的数组，不使用 shell；可以用绝对程序路径，或 `["node", "/路径/cli.js"]`。
 
@@ -111,4 +113,4 @@ agent-autoloop resume '检查新 PR'
 
 ## 验证
 
-`node --test tests/github-pr-notify.test.ts` 使用临时目录、临时中台、假 GitHub/飞书 CLI，覆盖游标、分页、丢失回执、标准安装、FYI 和群路由。测试不连接现有业务监听或发送真实群消息。真实安装的版本和读回证据另记在部署记录中。
+先运行 `npm run ui:install`，再运行 `node --test tests/github-pr-notify.test.ts`。测试使用临时目录、临时中台、假 GitHub/飞书 CLI，覆盖游标、分页、丢失回执、携带依赖的独立安装、FYI、统一 PR 展示和群路由，不连接现有业务监听或发送真实群消息。真实安装的版本和读回证据另记在部署记录中。

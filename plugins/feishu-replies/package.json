@@ -3,6 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "*.mjs",
+    "*.d.mts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./ui.d.mts",
+      "default": "./ui.mjs"
+    },
+    "./avatars": {
+      "types": "./avatars.d.mts",
+      "default": "./avatars.mjs"
+    },
+    "./avatar-url": {
+      "types": "./avatar-url.d.mts",
+      "default": "./avatar-url.mjs"
+    }
+  },
   "engines": {
     "node": ">=24"
   },

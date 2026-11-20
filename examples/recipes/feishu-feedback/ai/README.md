@@ -14,7 +14,7 @@
 - 已由用户登录的官方 Codex CLI；本次使用独立安装的 0.170.0，复用原登录，
   不读取或复制登录凭据，不修改原全局 CLI。
 - 已登录且可查询/创建目标仓库 Issue 的 `gh`。
-- 仓库根目录运行 `npm run feedback:install`，安装锁定的官方 MCP SDK 与 A2UI 插件依赖；本包测试用 `npm test`。部署时同时保留 `plugins/feishu-replies` 目录与本配方的相对位置。
+- 仓库根目录运行 `npm run feedback:install`，安装锁定的官方 MCP SDK 与共享 A2UI 本地包；本包测试用 `npm test`。直接安装本包时使用 `npm ci --ignore-scripts --install-links`，部署时携带本包 `node_modules`，无需相对寻找其他插件。共享展示源码变化后重新安装，更新消费者内的副本。
 
 私有配置放 Git 外，权限 0600，示例：
 
@@ -131,8 +131,8 @@ record_decision。没有任意路径、仓库或 API 参数。GitHub 写入仅�
 
 应用须有 `im:message:send_as_bot`。发送复用官方 CLI 的现有应用 profile，身份
 固定为 bot，目标由来源会话散列映射回现有白名单群。无需卡片交互回调、管理权限
-或新的机器人。AI 没有任意发消息工具；确认新建的 Issue 生成固定工单卡片，包含
-公开标题和指定仓库链接。普通问题、重复项说明或需要澄清的内容，由 AI 判断后用
+或新的机器人。AI 没有任意发消息工具；确认新建的 Issue 通过共享 A2UI 生成工单卡片，包含
+标题、作者头像及资料链接、状态、创建/更新时间和指定仓库入口。它与新 PR、PR 查询共用展示组件及飞书适配器。普通问题、重复项说明或需要澄清的内容，由 AI 判断后用
 原生 notice FYI 输出答案卡片，走独立 `feishu-replies` 通道；不机械逐条回复。
 
 纯问答仍用 `ignored` 记录“无需建单”的分类，回答正文存中台卡片与回执日志。
