@@ -17,7 +17,7 @@ function fixture(t, github) {
 const pr = (number) => ({
   number,
   title: "中文 PR",
-  user: { login: "author" },
+  user: { login: "author", id: 123 },
   draft: true,
   html_url: "https://untrusted.test",
   created_at: "2026-11-19T02:03:00Z",
@@ -41,6 +41,10 @@ test("only whitelisted repositories and GET open-PR endpoints are exposed, with 
   assert.ok(calls.every((c) => c.method === "GET" && /^repos\/example\/(app|backend)\/pulls$/.test(c.path)));
   assert.equal(result.repositories[0].pullRequests[0].url, "https://github.com/example/app/pull/101");
   assert.equal(result.repositories[0].pullRequests[0].draft, true);
+  assert.equal(
+    result.repositories[0].pullRequests[0].avatarUrl,
+    "https://avatars.githubusercontent.com/u/123?s=80&v=4",
+  );
   assert.equal(result.repositories[0].pullRequests[0].createdAt, "2026-11-19T02:03:00.000Z");
   assert.equal(result.repositories[0].pullRequests[0].updatedAt, "2026-11-20T00:05:00.000Z");
 });

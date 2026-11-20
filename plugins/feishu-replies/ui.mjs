@@ -1,9 +1,10 @@
 import { MessageProcessor, NodeResolver, ResolvedBinding, getValue } from "@a2ui/web_core";
 import { basicCatalog } from "@a2ui/web_core/catalogs/basic/v1";
+import { isAvatarUrl } from "./avatars.mjs";
 export { pullRequestViews } from "./pr-view.mjs";
 export { saveView, loadView } from "./artifacts.mjs";
 
-const supported = new Set(["Column", "Row", "Text", "Divider", "Button"]);
+const supported = new Set(["Column", "Row", "Text", "Divider", "Button", "Image"]);
 function navigation(url) {
   if (
     typeof url !== "string" ||
@@ -22,7 +23,7 @@ function literalOrPath(value) {
 }
 
 // This is a snapshot adapter, not a second A2UI interpreter. Official Core owns protocol validation and binding scopes.
-export async function renderA2ui(view) {
+export async function renderA2ui(view, { image } = {}) {
   const message = view?.messages?.[0],
     surface = message?.createSurface;
   if (
@@ -39,6 +40,8 @@ export async function renderA2ui(view) {
   for (const c of surface.components) {
     if (!supported.has(c.component)) throw new Error("unsupported_a2ui_component");
     if (c.component === "Text" && !literalOrPath(c.text)) throw new Error("unsupported_a2ui_binding");
+    if (c.component === "Image" && (c.variant !== "avatar" || !literalOrPath(c.url)))
+      throw new Error("unsupported_a2ui_image");
     if (c.component === "Button") {
       const call = c.action?.functionCall;
       if (
@@ -57,24 +60,29 @@ export async function renderA2ui(view) {
     await processor.processMessages(view.messages);
     resolver = new NodeResolver(processor.model.getSurface(surface.surfaceId));
     const definitions = new Map(surface.components.map((c) => [c.id, c]));
-    const render = (node) => {
+    const render = async (node) => {
       if (!node || node.state !== "resolved") throw new Error("unresolved_a2ui_component");
       const p = getValue(node.props);
       switch (node.type) {
         case "Column":
-          return p.children.flatMap(render);
+          return (await Promise.all(p.children.map(render))).flat();
         case "Row":
           return [
             {
               tag: "column_set",
               flex_mode: "flow",
               horizontal_spacing: "8px",
-              columns: p.children.map((child) => ({
-                tag: "column",
-                width: "weighted",
-                weight: 1,
-                elements: render(child),
-              })),
+              columns: (
+                await Promise.all(
+                  p.children.map(async (child) => ({
+                    tag: "column",
+                    width: child.type === "Image" ? "auto" : "weighted",
+                    weight: 1,
+                    vertical_align: "center",
+                    elements: await render(child),
+                  })),
+                )
+              ).filter((c) => c.elements.length),
             },
           ];
         case "Divider":
@@ -90,7 +98,7 @@ export async function renderA2ui(view) {
           ];
         }
         case "Button": {
-          const label = render(p.child);
+          const label = await render(p.child);
           if (label.length !== 1 || label[0].tag !== "div") throw new Error("unsupported_button_child");
           const raw = definitions.get(node.componentId).action.functionCall.args.url;
           const url = navigation(node.context.dataContext.resolveDynamicValue(raw));
@@ -103,6 +111,24 @@ export async function renderA2ui(view) {
             },
           ];
         }
+        case "Image": {
+          const url = p.url instanceof ResolvedBinding ? p.url.value : p.url;
+          if (!isAvatarUrl(url)) throw Error("unsupported_avatar_url");
+          const key = await image?.(url);
+          if (!key) return [];
+          if (!/^img_[\w-]+$/.test(key)) throw Error("invalid_image_key");
+          const description = p.description instanceof ResolvedBinding ? p.description.value : p.description;
+          return [
+            {
+              tag: "img",
+              img_key: key,
+              alt: { tag: "plain_text", content: description || "作者头像" },
+              size: "40px 40px",
+              corner_radius: "50%",
+              preview: false,
+            },
+          ];
+        }
         default:
           throw new Error("unsupported_a2ui_component");
       }
@@ -111,7 +137,7 @@ export async function renderA2ui(view) {
       schema: "2.0",
       config: { wide_screen_mode: true },
       header: { template: "blue", title: { tag: "plain_text", content: view.title } },
-      body: { elements: render(getValue(resolver.rootNode)) },
+      body: { elements: await render(getValue(resolver.rootNode)) },
     };
   } finally {
     resolver?.dispose();
