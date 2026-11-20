@@ -32,6 +32,8 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci
+      - if: github.event_name != 'pull_request'
+        run: npm --prefix plugins/feishu-replies ci --ignore-scripts
       # A pull request that changes this file or sim/ gets the kills and the mutations; the long runs wait for the schedule.
       - if: github.event_name != 'pull_request'
         run: npm test
