@@ -98,7 +98,17 @@ test("GitHub bot authors navigate to their app profile", async () => {
   const { pullRequestViews, renderA2ui } = await ui();
   const bot = structuredClone(result);
   bot.repositories[0].pullRequests[0].author = "dependabot[bot]";
-  assert.ok(JSON.stringify(await renderA2ui(pullRequestViews(bot)[0])).includes("https://github.com/apps/dependabot"));
+  bot.repositories[0].pullRequests[0].avatarUrl = "https://avatars.githubusercontent.com/in/29110?s=80&v=4";
+  assert.ok(
+    JSON.stringify(
+      await renderA2ui(pullRequestViews(bot)[0], {
+        image: async (url) => {
+          assert.equal(url, bot.repositories[0].pullRequests[0].avatarUrl);
+          return "img_bot";
+        },
+      }),
+    ).includes("https://github.com/apps/dependabot"),
+  );
 });
 
 test("official avatar Image binding resolves into a compact Feishu image beside the author's link", async () => {

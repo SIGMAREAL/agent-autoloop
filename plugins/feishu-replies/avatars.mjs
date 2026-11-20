@@ -2,9 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { run } from "./cli.mjs";
+import { isAvatarUrl } from "./avatar-url.mjs";
 
-export const isAvatarUrl = (url) =>
-  typeof url === "string" && /^https:\/\/avatars\.githubusercontent\.com\/u\/[1-9]\d*\?s=80&v=4$/.test(url);
 const imageKey = (key) => typeof key === "string" && /^img_[\w-]+$/.test(key);
 const LIMIT = 1024 * 1024,
   DAY = 24 * 3600_000;

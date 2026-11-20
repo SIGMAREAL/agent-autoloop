@@ -1,6 +1,6 @@
 import { MessageProcessor, NodeResolver, ResolvedBinding, getValue } from "@a2ui/web_core";
 import { basicCatalog } from "@a2ui/web_core/catalogs/basic/v1";
-import { isAvatarUrl } from "./avatars.mjs";
+import { isAvatarUrl } from "./avatar-url.mjs";
 export { pullRequestViews } from "./pr-view.mjs";
 export { saveView, loadView } from "./artifacts.mjs";
 

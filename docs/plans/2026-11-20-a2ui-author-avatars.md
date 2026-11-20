@@ -2,7 +2,7 @@
 
 **Goal:** 在现有官方 A2UI PR 卡片中显示真实 GitHub 作者头像，保留名字、资料链接及时间。
 
-**Architecture:** 只读 GitHub 查询根据 user.id 提供固定 GitHub CDN 头像地址；视图使用官方 Image(variant=avatar)。发送通道下载头像并以现有 bot 身份上传为飞书图片，复用私有缓存，再映射 img 组件。AI 无新增工具、发送权限或事件监听。
+**Architecture:** 只读 GitHub 查询校验 GitHub 官方 avatar_url，保留 /u/、/in/ 路径并生成固定 CDN 头像地址；视图使用官方 Image(variant=avatar)。发送通道下载头像并以现有 bot 身份上传为飞书图片，复用私有缓存，再映射 img 组件。AI 无新增工具、发送权限或事件监听。
 
 **Tech Stack:** 现有官方 @a2ui/web_core 0.15.0、Node 内置 fetch/fs/child_process、官方 lark-cli。
 
@@ -13,4 +13,4 @@
 5. 固定版本更新，保留原收信进程；续办真实 PR 问题，核对头像资源及飞书实机截图。
 6. 合并后通过 main check 和完整 nightly，清理本批分支，保留长期开发工作树。
 
-实际接入记录：CLI 1.0.100 无法打开已存在且原生 wc 可读的图片路径；官方支持的 `--file image=-` 已走到上传接口，因此采用标准输入。当前原应用还缺 bot 的 im:resource:upload；仅需开通上传权限，不需要增加数据读取权限。
+实际接入记录：CLI 1.0.100 无法打开已存在且原生 wc 可读的图片路径；官方支持的 `--file image=-` 已走到上传接口，因此采用标准输入。当前个人版后台没有 im:resource:upload，提供旧 im:resource（获取与上传图片或文件资源，关联上传图片、上传文件接口），将按实际权限开通并发布。
