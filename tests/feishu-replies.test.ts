@@ -57,14 +57,15 @@ function settings(dir: string, command: string[], chats = ["oc_test"]) {
   return config;
 }
 
-test("answers render as plain text and only the configured rule's closed FYI is eligible", async () => {
+test("A2UI preserves plain text and only the configured rule's closed FYI is eligible", async () => {
   const { renderReply } = await load();
-  const payload = renderReply(card, rule);
-  assert.equal(payload.elements[0].text.tag, "plain_text");
-  assert.equal(payload.elements[0].text.content, card.text);
-  assert.throws(() => renderReply({ ...card, rule: "other" }, rule));
-  assert.throws(() => renderReply({ ...card, kind: "ask", state: "open" }, rule));
-  assert.throws(() => renderReply({ ...card, state: "open" }, rule));
+  const payload = await renderReply(card, rule);
+  assert.equal(payload.schema, "2.0");
+  assert.equal(payload.body.elements[0].text.tag, "plain_text");
+  assert.equal(payload.body.elements[0].text.content, card.text);
+  await assert.rejects(renderReply({ ...card, rule: "other" }, rule));
+  await assert.rejects(renderReply({ ...card, kind: "ask", state: "open" }, rule));
+  await assert.rejects(renderReply({ ...card, state: "open" }, rule));
 });
 
 test("native redelivery keeps one bot message in the existing group using the same idempotency key", async () => {
@@ -114,7 +115,7 @@ test("native redelivery keeps one bot message in the existing group using the sa
   assert.ok(args.includes("existing-bot"));
   assert.ok(args.includes("feedback-reply-7"));
   assert.ok(!args.some((arg: string) => arg.includes("touch owned")));
-  assert.equal(body.elements[0].text.content, card.text);
+  assert.equal(body.body.elements[0].text.content, card.text);
 });
 
 test("multiple authorized groups fail closed until a per-conversation route is configured", async () => {

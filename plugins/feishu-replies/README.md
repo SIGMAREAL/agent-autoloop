@@ -2,7 +2,7 @@
 
 复用框架原生 `notice` FYI 回执，把答案作为卡片正文发回授权群。配套接收和 Codex 规则在 [飞书反馈场景](../../examples/recipes/feishu-feedback/ai/README.md)。用户在群里继续追问，现有规则续接 Codex 会话。
 
-这是只发送的通道，不创建事件监听。将本目录的固定版本复制或链接到 `~/.agent-autoloop/plugins/feishu-replies/`。仅依赖 Node 内置模块与现有 `lark-cli`，不增加 AI 工具或额外队列。
+这是只发送的通道，不创建事件监听。将本目录的固定版本复制或链接到 `~/.agent-autoloop/plugins/feishu-replies/`。中台保持零运行时依赖；本插件独立安装官方 `@a2ui/web_core@0.15.0`（Apache-2.0），不采用社区飞书渲染器。复制完整目录后执行 `npm ci --ignore-scripts`，不增加 AI 权限或额外队列。
 
 私有 `config.json` 的通道选项引用原 AI 配置，沿用其中 `cardNotifications` 的程序、profile 和 relayConfig：
 
@@ -28,8 +28,25 @@ Codex 最后输出：
 ```
 ````
 
-只接受已配置规则的 `notice`、`closed` 卡片，正文按 plain_text 展示。收件群由配置决定，消息正文和 AI 无法指定其他地址。内容经 stdin 交给官方 CLI，以 bot 身份发送，用中台卡片编号作为幂等键；送达、重试及预算使用中台原有机制，不承诺跨外部服务故障的绝对一次送达。
+只接受已配置规则的 `notice`、`closed` 卡片。普通文字被封装为官方 A2UI Text surface，再以 plain_text 展示。收件群由配置决定，消息正文和 AI 无法指定其他地址。内容经 stdin 交给官方 CLI，以 bot 身份发送，用中台卡片编号作为幂等键；送达、重试及预算使用中台原有机制，不承诺跨外部服务故障的绝对一次送达。
 
 旧的建单回执 outbox 继续负责成功建单的固定卡片；普通问答使用这里的原生 FYI，避免把每个问题都变成 Issue。MCP 默认仍为原有六工具，配置仓库白名单后可多一个只读 PR 查询工具；代码、PR 写入、合并和发布权限不变。
 
 查看 `agent-autoloop runs 飞书反馈建单`、`why <轮次>`。暂停规则会停止处理新消息；移除此通道配置并重启即可卸载。测试 `node --test tests/feishu-replies.test.ts` 使用临时中台和假 CLI，不操作在线消息或数据库。
+
+## 官方 A2UI 与飞书映射
+
+使用 [A2UI 1.0](https://a2ui.org/concepts/sdks/) 的官方 Basic Catalog；`ui.mjs` 通过官方 MessageProcessor 校验协议和组件，再通过 NodeResolver 解析数据绑定，最后自行生成飞书 JSON 2.0。协议与绑定没有自行重写。
+
+目前支持 Column、Row、Text、Divider、Button；Button 仅支持官方 openUrl，目标限 GitHub PR、仓库 PR 列表及作者资料。拒绝其他组件和动作，不执行 HTML、脚本或回调，不增加监听。此为单次快照适配，尚未实现 A2UI 增量更新、表单或双向交互。
+
+`pr-view.mjs` 是可复用 PR 视图，样式与组件映射在 `ui.mjs`。修改视图结构或映射即可预先定制布局，PR 数据不夹带飞书组件。每条包含标题链接、作者链接、草稿状态、创建与更新时间；时间明确为上海时间，缺失值显示未知。每页 8 条，最多 10 页；超限会列明展示数量和完整仓库入口，查询失败仓库单独标注。
+
+只读 `list_pull_requests` 在本次查询后生成 A2UI 数据文件，并返回 `uiCards`。Codex 将每项 title/text 原样用于 notice，key 使用问题 deliveryId 加分页序号。`text` 是 `a2ui:<SHA256>`，文件在私有 AI `stateDir/a2ui` 下，以 0600 保存；加载检查私有权限、文件类型、大小及内容哈希，不接受路径。卡片内容较长也无需扩大中台 text 限制。文件保留用于原生回执重试和审计，备份/清理时须保留仍可能重试的引用。
+
+```sh
+npm ci --ignore-scripts
+npm test
+```
+
+仓库开发可运行 `npm run feedback:install` 后再跑快速测试；此命令同时安装插件与两个反馈包的固定依赖。插件行为测试覆盖官方绑定校验、链接/作者/时间、空态、分页、查询失败、非法动作、引用校验和真实通道的假 CLI 交付；不发送在线测试消息。
