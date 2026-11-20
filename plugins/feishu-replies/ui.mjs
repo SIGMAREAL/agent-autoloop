@@ -124,6 +124,7 @@ export async function renderA2ui(view, { image } = {}) {
               img_key: key,
               alt: { tag: "plain_text", content: description || "作者头像" },
               size: "small",
+              scale_type: "crop_center",
               corner_radius: "50%",
               preview: false,
             },
