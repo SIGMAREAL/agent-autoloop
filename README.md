@@ -1,6 +1,6 @@
 # Agent Autoloop
 
-> 本 Fork 的新增场景：[飞书消息接收、Codex 判断建单与原群卡片](examples/recipes/feishu-feedback/README.md)。后续开发在本仓库，原作者仓库保留为 upstream。
+> 本 Fork 的新增场景：[飞书消息接收、Codex 卡片回答与判断建单](examples/recipes/feishu-feedback/README.md)。后续开发在本仓库，原作者仓库保留为 upstream。
 
 **让你的命令行 Agent 在后台自己接活、自己跟进到底；平时不烦你，遇到拿不准的事才发卡片找你拍板。**
 
