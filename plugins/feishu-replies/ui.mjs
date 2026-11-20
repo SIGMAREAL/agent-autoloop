@@ -123,7 +123,7 @@ export async function renderA2ui(view, { image } = {}) {
               tag: "img",
               img_key: key,
               alt: { tag: "plain_text", content: description || "作者头像" },
-              size: "40px 40px",
+              size: "small",
               corner_radius: "50%",
               preview: false,
             },

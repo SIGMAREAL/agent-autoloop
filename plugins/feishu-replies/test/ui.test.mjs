@@ -129,6 +129,7 @@ test("official avatar Image binding resolves into a compact Feishu image beside 
   assert.equal(row.columns[0].width, "auto");
   assert.equal(row.columns[0].elements[0].tag, "img");
   assert.equal(row.columns[0].elements[0].img_key, "img_v3_avatar");
+  assert.equal(row.columns[0].elements[0].size, "small");
   assert.ok(JSON.stringify(row.columns[1]).includes("https://github.com/alice"));
   const fallback = await renderA2ui(view, { image: async () => null });
   assert.ok(JSON.stringify(fallback).includes("作者：alice"));
