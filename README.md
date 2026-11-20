@@ -152,6 +152,8 @@ Agent 结束了这一轮，问了你一个问题。它现在不占进程、不�
 
 内置插件随程序安装，填好配置即可启用；第三方插件用 `agent-autoloop add <git 地址>` 安装。
 
+新增：[新 PR 发到指定飞书群](plugins/github-pr-notify/README.md)，通过命令 Agent 与只发送通道接入，不调用模型。
+
 | 方向 | 内置 | 配置 |
 |---|---|---|
 | **事件**：怎么发现新活 | [GitHub Webhook](plugins/github/source.ts)、[GitLab Webhook](plugins/gitlab/source.ts)、[HTTP 接口](docs/protocol.md#来源把世界变成事件)、[定时规则](skills/agent-autoloop/SKILL.md#改规则)、[Issue 轮询脚本](examples/watch-github-issues.sh) | [说明](skills/agent-autoloop/SKILL.md#接一个事件插件) |
