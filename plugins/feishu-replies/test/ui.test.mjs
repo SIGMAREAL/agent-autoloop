@@ -49,7 +49,12 @@ test("official A2UI resolves PR data bindings into native links, author and labe
   assert.ok(json.includes("草稿"));
   const title = card.body.elements.find((e) => e.tag === "button" && e.behaviors[0].default_url.endsWith("/42"));
   assert.equal(title.text.tag, "plain_text");
-  assert.ok(title.text.content.includes("<at id=all>"));
+  assert.match(title.text.content, /#42/);
+  assert.ok(
+    card.body.elements.some(
+      (e) => e.tag === "div" && e.text.tag === "plain_text" && e.text.content.includes("<at id=all>"),
+    ),
+  );
   const changed = structuredClone(view);
   changed.messages[0].createSurface.dataModel.items[0].title = "更新后的真实数据";
   assert.ok(JSON.stringify(await renderA2ui(changed)).includes("更新后的真实数据"));

@@ -8,6 +8,7 @@ export function pullRequestViews(result) {
   const items = result.repositories.flatMap((r) =>
     r.pullRequests.map((p) => ({
       title: `${r.repository} #${p.number} · ${p.title}`,
+      linkLabel: `#${p.number} · 查看 PR`,
       url: p.url,
       author: `作者：${p.author}`,
       authorUrl: p.author.endsWith("[bot]")
@@ -43,7 +44,8 @@ export function pullRequestViews(result) {
       children.push(text("empty", result.complete ? "当前没有未合并 PR。" : "已核实范围暂无 PR；部分仓库查询不完整。"));
     dataModel.items.forEach((_, i) => {
       children.push(add(`divider_${i}`, "Divider", {}));
-      children.push(link(`pr_${i}`, path(`/items/${i}/title`), path(`/items/${i}/url`)));
+      children.push(text(`title_${i}`, path(`/items/${i}/title`)));
+      children.push(link(`pr_${i}`, path(`/items/${i}/linkLabel`), path(`/items/${i}/url`)));
       const author = link(`author_${i}`, path(`/items/${i}/author`), path(`/items/${i}/authorUrl`));
       const status = text(`status_${i}`, path(`/items/${i}/status`), "caption");
       children.push(add(`meta_${i}`, "Row", { children: [author, status] }));
