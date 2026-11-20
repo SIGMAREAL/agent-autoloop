@@ -22,13 +22,29 @@ type Context = {
   };
 };
 
-export function renderReply(card: Card, rule: string) {
+export async function renderReply(card: Card, rule: string, stateDir?: string) {
   if (card.rule !== rule || card.kind !== "notice" || card.state !== "closed") throw new Error("reply_fyi_required");
-  return {
-    config: { wide_screen_mode: true },
-    header: { template: "blue", title: { tag: "plain_text", content: card.title } },
-    elements: [{ tag: "div", text: { tag: "plain_text", content: card.text } }],
-  };
+  const { renderA2ui, loadView } = await import("./ui.mjs");
+  const view = card.text.startsWith("a2ui:")
+    ? loadView(stateDir, card.text)
+    : {
+        title: card.title,
+        messages: [
+          {
+            version: "1.0",
+            createSurface: {
+              surfaceId: "reply",
+              catalogId: "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json",
+              components: [
+                { id: "root", component: "Column", children: ["answer"] },
+                { id: "answer", component: "Text", text: { "@path": "/answer" } },
+              ],
+              dataModel: { answer: card.text },
+            },
+          },
+        ],
+      };
+  return renderA2ui(view);
 }
 
 function settings(file: string) {
@@ -44,7 +60,13 @@ function settings(file: string) {
   const command = c.command ?? [c.program];
   if (!Array.isArray(command) || !command.length || command.some((p) => typeof p !== "string" || !p))
     throw new Error("reply_command_required");
-  return { rule: config.rule, chatId: relay.chatIds[0], profile: c.profile, command: command as string[] };
+  return {
+    rule: config.rule,
+    stateDir: config.stateDir,
+    chatId: relay.chatIds[0],
+    profile: c.profile,
+    command: command as string[],
+  };
 }
 
 function send(command: string[], args: string[], content: string, signal: AbortSignal): Promise<string> {
@@ -73,11 +95,11 @@ export default async function replies({ hub, options, signal, log }: Context) {
     if (!card) continue;
     try {
       const c = settings(String(options.config));
-      const content = JSON.stringify(renderReply(card, c.rule));
       if (card.ref) {
         await hub.delivered(card.id, card.version, card.ref);
         continue;
       }
+      const content = JSON.stringify(await renderReply(card, c.rule, c.stateDir));
       const result = JSON.parse(
         await send(
           c.command,

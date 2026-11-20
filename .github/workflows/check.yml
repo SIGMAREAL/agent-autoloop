@@ -35,6 +35,8 @@ jobs:
           package-manager-cache: false
       - if: steps.scope.outputs.scope != 'docs'
         run: npm ci
+      - if: runner.os == 'Windows' && steps.scope.outputs.scope != 'docs'
+        run: npm --prefix plugins/feishu-replies ci --ignore-scripts
       - if: steps.scope.outputs.scope != 'docs'
         run: npm run format:check
       - if: steps.scope.outputs.scope != 'docs'

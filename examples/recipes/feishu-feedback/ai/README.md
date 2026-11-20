@@ -14,7 +14,7 @@
 - 已由用户登录的官方 Codex CLI；本次使用独立安装的 0.170.0，复用原登录，
   不读取或复制登录凭据，不修改原全局 CLI。
 - 已登录且可查询/创建目标仓库 Issue 的 `gh`。
-- `npm ci` 安装本包锁定的官方 MCP SDK；本包测试用 `npm test`。
+- 仓库根目录运行 `npm run feedback:install`，安装锁定的官方 MCP SDK 与 A2UI 插件依赖；本包测试用 `npm test`。部署时同时保留 `plugins/feishu-replies` 目录与本配方的相对位置。
 
 私有配置放 Git 外，权限 0600，示例：
 
@@ -172,3 +172,5 @@ node main.mjs --config /private/ai.json --reconcile-routing
 
 真实飞书群图片/文件、真实新反馈建单、模拟写入错误和进程恢复分别记录验收，
 不以本地合成测试代替真实链路证据。不为验证创建用户未授权的公开测试 Issue。
+
+PR 查询结果包含真实创建/更新时间及 `uiCards`。后者引用同次查询生成的官方 A2UI 1.0 文件，存放在本配置 `stateDir/a2ui`；中台只传短引用，由只发送通道校验并渲染，不增加 MCP 工具或任意群发送能力。布局、样式与支持范围见[官方 A2UI 适配说明](../../../../plugins/feishu-replies/README.md#官方-a2ui-与飞书映射)。普通答案同样经过官方 A2UI Text surface，保持原有纯文本内容安全边界。

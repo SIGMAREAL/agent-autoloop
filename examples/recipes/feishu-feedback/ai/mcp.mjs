@@ -6,6 +6,8 @@ import { sep } from "node:path";
 import { Inbox } from "./intake.mjs";
 import { FeedbackTools } from "./tools.mjs";
 import { PullRequests } from "./pull-requests.mjs";
+import { pullRequestViews } from "../../../../plugins/feishu-replies/pr-view.mjs";
+import { saveView } from "../../../../plugins/feishu-replies/artifacts.mjs";
 
 process.umask(0o077);
 const path = process.argv[process.argv.indexOf("--config") + 1];
@@ -124,7 +126,13 @@ if (prQueries) {
     "list_pull_requests",
     "Read currently open PRs, including drafts, only in the operator's fixed repository allowlist. Reports incomplete coverage. No writes or arbitrary API access.",
     { repository: z.string().max(140).optional() },
-    (args) => prQueries.list(args),
+    async (args) => {
+      const result = await prQueries.list(args);
+      return {
+        ...result,
+        uiCards: pullRequestViews(result).map((view) => ({ title: view.title, text: saveView(config.stateDir, view) })),
+      };
+    },
     true,
   );
 }

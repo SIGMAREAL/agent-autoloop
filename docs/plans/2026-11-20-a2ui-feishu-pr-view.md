@@ -2,7 +2,7 @@
 
 **Goal:** 用官方 A2UI 1.0 表达 PR 查询结果，自行映射飞书卡片，显示标题链接、作者链接、创建及更新时间。
 
-**Architecture:** 现有只读 PR 查询生成真实数据及官方 Basic Catalog 的 A2UI surface；插件包固定依赖官方 @a2ui/web_core 0.15.0，使用 MessageProcessor 与 NodeResolver 校验和解析绑定，再映射飞书 JSON 2.0。界面以私有内容寻址文件保存，原生 notice 只传短引用，不改变中台协议或 4000 字符限制。普通文字回复继续兼容现有通道。
+**Architecture:** 现有只读 PR 查询生成真实数据及官方 Basic Catalog 的 A2UI surface；插件包固定依赖官方 @a2ui/web_core 0.15.0，使用 MessageProcessor 与 NodeResolver 校验和解析绑定，再映射飞书 JSON 2.0。界面以私有内容寻址文件保存，原生 notice 只传短引用，不改变中台协议或 4000 字符限制。普通文字回复封装为官方 A2UI Text surface，保留原有纯文本语义。
 
 **Tech Stack:** Node 24+、官方 A2UI 1.0 / Basic Catalog、官方 lark-cli、Node test。
 

@@ -52,6 +52,8 @@ export class PullRequests {
               author: String(p.user?.login || "unknown").slice(0, 100),
               draft: Boolean(p.draft),
               url: `https://github.com/${repo}/pull/${p.number}`,
+              createdAt: Number.isFinite(Date.parse(p.created_at)) ? new Date(p.created_at).toISOString() : null,
+              updatedAt: Number.isFinite(Date.parse(p.updated_at)) ? new Date(p.updated_at).toISOString() : null,
             });
           }
           if (items.length < 100) return { repository: repo, pullRequests, complete: true };
