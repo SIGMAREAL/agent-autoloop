@@ -5,20 +5,26 @@ const privateData = (value) =>
     value,
   );
 
-export async function ghRequest(method, path, data) {
+export async function ghRequest(
+  method,
+  path,
+  data,
+  { program = "/opt/homebrew/bin/gh", signal, timeoutMs = 120_000 } = {},
+) {
   const args = ["api", "--method", method, path];
   if (method === "GET" && data)
     for (const [key, value] of Object.entries(data)) args.push("--raw-field", `${key}=${value}`);
   else if (data) args.push("--input", "-");
   return new Promise((resolve, reject) => {
-    const child = spawn("/opt/homebrew/bin/gh", args, {
+    const child = spawn(program, args, {
       stdio: ["pipe", "pipe", "pipe"],
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]),
     });
     let stdout = "",
       bytes = 0;
+    child.stdout.setEncoding("utf8");
     child.stdout.on("data", (part) => {
-      bytes += part.length;
+      bytes += Buffer.byteLength(part);
       if (bytes > 4 * 1024 * 1024) child.kill();
       else stdout += part;
     });

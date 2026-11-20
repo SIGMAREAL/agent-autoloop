@@ -79,3 +79,37 @@ test("real MCP transport exposes only feedback and Issue tools, never code or Fe
   });
   assert.equal(decision.isError, undefined);
 });
+
+test("configured PR lookup is read-only and refuses repositories outside the private allowlist", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "feedback-pr-mcp-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const repos = join(dir, "repos.json"),
+    cfg = join(dir, "config.json");
+  writeFileSync(repos, JSON.stringify(["example/app"]), { mode: 0o600 });
+  writeFileSync(
+    cfg,
+    JSON.stringify({
+      stateDir: dir,
+      contextRoot: dir,
+      allowedConversations: ["b".repeat(64)],
+      repo: "example/app",
+      prRepositoriesFile: repos,
+    }),
+    { mode: 0o600 },
+  );
+  const client = new Client({ name: "pr-test", version: "1" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [new URL("../mcp.mjs", import.meta.url).pathname, "--config", cfg],
+    stderr: "pipe",
+  });
+  await client.connect(transport);
+  t.after(() => client.close());
+  const { tools } = await client.listTools();
+  const query = tools.find((tool) => tool.name === "list_pull_requests");
+  assert.ok(query, "the configured read-only PR query must be available");
+  assert.equal(query.annotations.readOnlyHint, true);
+  const result = await client.callTool({ name: "list_pull_requests", arguments: { repository: "other/private" } });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /unauthorized_repository/);
+});

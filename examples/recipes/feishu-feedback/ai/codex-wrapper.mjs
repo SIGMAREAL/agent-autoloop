@@ -25,6 +25,7 @@ if (args[0] === "exec") {
       "read_feedback",
       "find_issues",
       "read_issue",
+      ...(config.prRepositoriesFile ? ["list_pull_requests"] : []),
       "create_issue",
       "record_decision",
     ],

@@ -42,6 +42,32 @@ test("feedback Codex preauthorizes only the two approved writes while retaining 
     "read_issue",
     "record_decision",
   ]);
+  writeFileSync(
+    config,
+    JSON.stringify({
+      codexProgram: fake,
+      model: "example",
+      effort: "high",
+      prRepositoriesFile: join(dir, "private-repos.json"),
+    }),
+    { mode: 0o600 },
+  );
+  const configured = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [new URL("../codex-wrapper.mjs", import.meta.url).pathname, "exec", "--json", "task"],
+      {
+        env: { ...process.env, PETWINS_FEEDBACK_AI_CONFIG: config },
+        encoding: "utf8",
+      },
+    ),
+  );
+  const enabled = configured.find((v) => v.startsWith("mcp_servers.feedback.enabled_tools="));
+  assert.ok(JSON.parse(enabled.split("=")[1]).includes("list_pull_requests"));
+  assert.ok(
+    !configured.some((v) => v.includes("tools.list_pull_requests.approval_mode")),
+    "read-only lookup gets no new write approval",
+  );
 });
 
 test("a successful model exit is not completion until every feedback has a recorded decision", async (t) => {

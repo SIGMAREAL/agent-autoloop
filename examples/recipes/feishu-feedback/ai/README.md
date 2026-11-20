@@ -97,11 +97,22 @@ SQLite 事务中落盘后才应答；本地资源文件是可恢复缓存。向 
 Codex 成功退出后还要核实本轮每条反馈已记录决策；缺失时向 Autoloop 报告失败，
 保留原会话供重试，不以模型口头“处理完成”代替实际结果。
 
-反馈 MCP 仅有：read_context、read_feedback、find_issues、read_issue、create_issue、
-record_decision。没有任意路径、仓库或 API 参数。GitHub 工具仅允许创建 Issue，
+反馈 MCP 默认有：read_context、read_feedback、find_issues、read_issue、create_issue、
+record_decision。没有任意路径、仓库或 API 参数。GitHub 写入仅允许创建 Issue，
 必须先查询重复项；已记录决策的消息不能再次建单。不设测试词、机器人话题或
 产品类别的硬门禁；具体内容是否值得记录由 AI 结合上下文判断。
 已知敏感标识、联系方式和凭据格式不得进入 Issue 草稿。
+
+### 可选的跨仓库 PR 查询
+
+在私有 AI 配置设置 `prRepositoriesFile`，指向 0600 的 JSON 仓库数组文件，例如
+`["example/app", "example/backend"]`。配置后额外启用只读 `list_pull_requests`；未配置时仍是六工具。
+沿用已授权 PR 通知的仓库范围即可，不把真实清单提交到仓库。
+
+该工具只 GET 白名单仓库的 open PR（含草稿），返回编号、标题、作者、链接及覆盖情况，
+不读代码或 PR 正文，不暴露任意 URL/API。查询有分页、并发与时间上限；某仓库失败或到达
+上限会明确标记 `complete:false`，不能把部分结果说成全量。原有两个写工具的授权保持不变。
+更新 wrapper/MCP 固定代码路径后，下一轮会加载工具；无需另开飞书监听。
 
 ## 建单后的原群卡片
 

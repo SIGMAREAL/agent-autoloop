@@ -5,6 +5,7 @@ import { readFileSync, statSync, realpathSync } from "node:fs";
 import { sep } from "node:path";
 import { Inbox } from "./intake.mjs";
 import { FeedbackTools } from "./tools.mjs";
+import { PullRequests } from "./pull-requests.mjs";
 
 process.umask(0o077);
 const path = process.argv[process.argv.indexOf("--config") + 1];
@@ -12,6 +13,7 @@ if (!path || statSync(path).mode & 0o077) throw new Error("private_ai_config_req
 const config = JSON.parse(readFileSync(path, "utf8"));
 const inbox = new Inbox(config.stateDir, config.allowedConversations);
 const tools = new FeedbackTools(inbox, config);
+const prQueries = config.prRepositoriesFile ? new PullRequests({ repositoriesFile: config.prRepositoriesFile }) : null;
 const server = new McpServer({ name: "petwins-feedback", version: "0.1.0" });
 const deliveryId = z.string().regex(/^[a-f0-9]{64}$/);
 const issueNumber = z.number().int().positive();
@@ -39,7 +41,10 @@ function register(name, description, inputSchema, handler, readOnly) {
                   text: JSON.stringify({
                     decision: value.decision,
                     issueNumber: value.issueNumber,
-                    result: Array.isArray(value) || ["read_issue", "read_context"].includes(name) ? value : undefined,
+                    result:
+                      Array.isArray(value) || ["read_issue", "read_context", "list_pull_requests"].includes(name)
+                        ? value
+                        : undefined,
                   }),
                 },
               ],
@@ -114,6 +119,15 @@ register(
   (args) => tools.decide(args),
   false,
 );
+if (prQueries) {
+  register(
+    "list_pull_requests",
+    "Read currently open PRs, including drafts, only in the operator's fixed repository allowlist. Reports incomplete coverage. No writes or arbitrary API access.",
+    { repository: z.string().max(140).optional() },
+    (args) => prQueries.list(args),
+    true,
+  );
+}
 await server.connect(new StdioServerTransport());
 process.once("SIGTERM", async () => {
   await server.close();
