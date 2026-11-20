@@ -98,7 +98,48 @@ test("GitHub bot authors navigate to their app profile", async () => {
   const { pullRequestViews, renderA2ui } = await ui();
   const bot = structuredClone(result);
   bot.repositories[0].pullRequests[0].author = "dependabot[bot]";
-  assert.ok(JSON.stringify(await renderA2ui(pullRequestViews(bot)[0])).includes("https://github.com/apps/dependabot"));
+  bot.repositories[0].pullRequests[0].avatarUrl = "https://avatars.githubusercontent.com/in/29110?s=80&v=4";
+  assert.ok(
+    JSON.stringify(
+      await renderA2ui(pullRequestViews(bot)[0], {
+        image: async (url) => {
+          assert.equal(url, bot.repositories[0].pullRequests[0].avatarUrl);
+          return "img_bot";
+        },
+      }),
+    ).includes("https://github.com/apps/dependabot"),
+  );
+});
+
+test("official avatar Image binding resolves into a compact Feishu image beside the author's link", async () => {
+  const { pullRequestViews, renderA2ui } = await ui();
+  const withAvatar = structuredClone(result);
+  withAvatar.repositories[0].pullRequests[0].avatarUrl = "https://avatars.githubusercontent.com/u/123?s=80&v=4";
+  const view = pullRequestViews(withAvatar)[0],
+    urls = [];
+  assert.ok(view.messages[0].createSurface.components.some((c) => c.component === "Image" && c.variant === "avatar"));
+  const card = await renderA2ui(view, {
+    image: async (url) => {
+      urls.push(url);
+      return "img_v3_avatar";
+    },
+  });
+  assert.deepEqual(urls, [withAvatar.repositories[0].pullRequests[0].avatarUrl]);
+  const row = card.body.elements.find((e) => e.tag === "column_set");
+  assert.equal(row.columns[0].width, "auto");
+  assert.equal(row.columns[0].elements[0].tag, "img");
+  assert.equal(row.columns[0].elements[0].img_key, "img_v3_avatar");
+  assert.equal(row.columns[0].elements[0].size, "small");
+  assert.equal(row.columns[0].elements[0].scale_type, "crop_center");
+  assert.ok(JSON.stringify(row.columns[1]).includes("https://github.com/alice"));
+  const fallback = await renderA2ui(view, { image: async () => null });
+  assert.ok(JSON.stringify(fallback).includes("作者：alice"));
+  assert.ok(!JSON.stringify(fallback).includes('"tag":"img"'));
+  view.messages[0].createSurface.dataModel.items[0].avatarUrl = "https://attacker.test/avatar.png";
+  await assert.rejects(
+    renderA2ui(view, { image: async () => assert.fail("must not fetch arbitrary URLs") }),
+    /unsupported_avatar_url/,
+  );
 });
 
 test("official schema errors, unsupported components and unsafe navigation fail closed", async () => {

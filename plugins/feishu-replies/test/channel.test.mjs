@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import channel from "../channel.ts";
 import { saveView, pullRequestViews } from "../ui.mjs";
+import { Avatars } from "../avatars.mjs";
 
 test("the send-only channel resolves a private A2UI artifact and sends bot navigation with native idempotency", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "a2ui-channel-"));
@@ -13,9 +14,41 @@ test("the send-only channel resolves a private A2UI artifact and sends bot navig
   const result = {
     queriedAt: "2026-11-20T01:00:00Z",
     complete: true,
-    total: 0,
-    repositories: [{ repository: "example/app", complete: true, pullRequests: [] }],
+    total: 1,
+    repositories: [
+      {
+        repository: "example/app",
+        complete: true,
+        pullRequests: [
+          {
+            number: 1,
+            title: "PR",
+            author: "alice",
+            url: "https://github.com/example/app/pull/1",
+            avatarUrl: "https://avatars.githubusercontent.com/u/123?s=80&v=4",
+          },
+        ],
+      },
+    ],
   };
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const assets = new Avatars({
+    stateDir: dir,
+    scope: "test",
+    profile: "test",
+    command: [
+      process.execPath,
+      "-e",
+      "console.log(JSON.stringify({ok:true,identity:'bot',data:{image_key:'img_v3_avatar'}}))",
+      "--",
+    ],
+    signal: new AbortController().signal,
+    fetch: async () => new Response(png, { headers: { "content-type": "image/png" } }),
+  });
+  assert.equal(await assets.resolve(result.repositories[0].pullRequests[0].avatarUrl), "img_v3_avatar");
   const view = pullRequestViews(result)[0],
     ref = saveView(dir, view);
   const cfg = join(dir, "config.json"),
@@ -71,6 +104,7 @@ test("the send-only channel resolves a private A2UI artifact and sends bot navig
   assert.equal(delivered, 1);
   const sent = JSON.parse(readFileSync(capture, "utf8"));
   assert.equal(sent.card.schema, "2.0");
+  assert.ok(JSON.stringify(sent.card).includes('"img_key":"img_v3_avatar"'));
   assert.ok(sent.args.includes("feedback-reply-12"));
   assert.ok(!JSON.stringify(sent.card).includes(ref));
 });

@@ -38,7 +38,7 @@ Codex 最后输出：
 
 使用 [A2UI 1.0](https://a2ui.org/concepts/sdks/) 的官方 Basic Catalog；`ui.mjs` 通过官方 MessageProcessor 校验协议和组件，再通过 NodeResolver 解析数据绑定，最后自行生成飞书 JSON 2.0。协议与绑定没有自行重写。
 
-目前支持 Column、Row、Text、Divider、Button；Button 仅支持官方 openUrl，目标限 GitHub PR、仓库 PR 列表及作者资料。拒绝其他组件和动作，不执行 HTML、脚本或回调，不增加监听。此为单次快照适配，尚未实现 A2UI 增量更新、表单或双向交互。
+目前支持 Column、Row、Text、Divider、Button 和头像 Image；Button 仅支持官方 openUrl，目标限 GitHub PR、仓库 PR 列表及作者资料。拒绝其他组件和动作，不执行 HTML、脚本或回调，不增加监听。此为单次快照适配，尚未实现 A2UI 增量更新、表单或双向交互。
 
 `pr-view.mjs` 是可复用 PR 视图，样式与组件映射在 `ui.mjs`。修改视图结构或映射即可预先定制布局，PR 数据不夹带飞书组件。每条包含标题链接、作者链接、草稿状态、创建与更新时间；时间明确为上海时间，缺失值显示未知。每页 8 条，最多 10 页；超限会列明展示数量和完整仓库入口，查询失败仓库单独标注。
 
@@ -50,3 +50,9 @@ npm test
 ```
 
 仓库开发可运行 `npm run feedback:install` 后再跑快速测试；此命令同时安装插件与两个反馈包的固定依赖。插件行为测试覆盖官方绑定校验、链接/作者/时间、空态、分页、查询失败、非法动作、引用校验和真实通道的假 CLI 交付；不发送在线测试消息。
+
+## GitHub 作者头像
+
+只读 PR 查询校验 GitHub API 的 avatar_url 并保留用户 /u/、应用机器人 /in/ 路径，重建固定 CDN 地址，视图用官方 A2UI `Image`（`variant: avatar`）表示。发送适配器仅下载该固定来源的 80px PNG/JPEG，禁止重定向并限制大小/超时；以现有 bot 身份调用 `im images create`、`image_type: message` 上传，再用飞书 img 显示 40px 圆形头像。头像旁保留作者资料链接，不映射或猜测飞书成员身份。
+
+复用原应用的 `im:resource` / `im:resource:upload` 权限和 CLI profile，不增加 AI 工具、群发送权限或事件监听。`stateDir/avatar-images` 下私有缓存按应用和 profile 隔离，一天后刷新；同张卡片重复作者只下载/上传一次。缓存只保留图片 key 和时间，图片字节通过 CLI 标准输入上传，不写入本地文件。下载/上传失败时仍发送名字和链接，不阻塞 PR 答案；下次卡片重新尝试。

@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { ghRequest } from "./tools.mjs";
+import { canonicalAvatarUrl } from "../../../../plugins/feishu-replies/avatar-url.mjs";
 
 export class PullRequests {
   constructor({ repositoriesFile, github = ghRequest }) {
@@ -50,6 +51,7 @@ export class PullRequests {
               number: p.number,
               title: p.title.slice(0, 300),
               author: String(p.user?.login || "unknown").slice(0, 100),
+              avatarUrl: canonicalAvatarUrl(p.user?.avatar_url),
               draft: Boolean(p.draft),
               url: `https://github.com/${repo}/pull/${p.number}`,
               createdAt: Number.isFinite(Date.parse(p.created_at)) ? new Date(p.created_at).toISOString() : null,

@@ -17,7 +17,7 @@ function fixture(t, github) {
 const pr = (number) => ({
   number,
   title: "中文 PR",
-  user: { login: "author" },
+  user: { login: "author", id: 123, avatar_url: "https://avatars.githubusercontent.com/u/123?v=4" },
   draft: true,
   html_url: "https://untrusted.test",
   created_at: "2026-11-19T02:03:00Z",
@@ -41,6 +41,10 @@ test("only whitelisted repositories and GET open-PR endpoints are exposed, with 
   assert.ok(calls.every((c) => c.method === "GET" && /^repos\/example\/(app|backend)\/pulls$/.test(c.path)));
   assert.equal(result.repositories[0].pullRequests[0].url, "https://github.com/example/app/pull/101");
   assert.equal(result.repositories[0].pullRequests[0].draft, true);
+  assert.equal(
+    result.repositories[0].pullRequests[0].avatarUrl,
+    "https://avatars.githubusercontent.com/u/123?s=80&v=4",
+  );
   assert.equal(result.repositories[0].pullRequests[0].createdAt, "2026-11-19T02:03:00.000Z");
   assert.equal(result.repositories[0].pullRequests[0].updatedAt, "2026-11-20T00:05:00.000Z");
 });
@@ -55,6 +59,26 @@ test("one unavailable repository is explicit partial coverage, not an empty all-
   assert.equal(result.total, 1);
   assert.equal(result.repositories[1].error, "github_request_failed");
   assert.equal(result.repositories[1].complete, false);
+});
+
+test("GitHub App authors keep the official /in/ avatar route and unsafe avatar origins are omitted", async (t) => {
+  const { queries } = fixture(t, async () => [
+    {
+      ...pr(7),
+      user: {
+        login: "github-actions[bot]",
+        id: 41898282,
+        avatar_url: "https://avatars.githubusercontent.com/in/15368?v=4",
+      },
+    },
+    { ...pr(8), user: { login: "author", id: 123, avatar_url: "https://attacker.test/avatar.png" } },
+  ]);
+  const result = await queries.list();
+  assert.equal(
+    result.repositories[0].pullRequests[0].avatarUrl,
+    "https://avatars.githubusercontent.com/in/15368?s=80&v=4",
+  );
+  assert.equal(result.repositories[0].pullRequests[1].avatarUrl, null);
 });
 
 test("cancellation reaches active GitHub requests and remaining coverage stays incomplete", async (t) => {

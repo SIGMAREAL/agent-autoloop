@@ -14,6 +14,7 @@ export function pullRequestViews(result) {
       authorUrl: p.author.endsWith("[bot]")
         ? `https://github.com/apps/${p.author.slice(0, -5)}`
         : `https://github.com/${p.author}`,
+      avatarUrl: p.avatarUrl ?? null,
       status: p.draft ? "草稿" : "待合并",
       dates: `创建：${time(p.createdAt)}\n更新：${time(p.updatedAt)} · 上海时间`,
     })),
@@ -48,7 +49,17 @@ export function pullRequestViews(result) {
       children.push(link(`pr_${i}`, path(`/items/${i}/linkLabel`), path(`/items/${i}/url`)));
       const author = link(`author_${i}`, path(`/items/${i}/author`), path(`/items/${i}/authorUrl`));
       const status = text(`status_${i}`, path(`/items/${i}/status`), "caption");
-      children.push(add(`meta_${i}`, "Row", { children: [author, status] }));
+      const avatar = dataModel.items[i].avatarUrl
+        ? [
+            add(`avatar_${i}`, "Image", {
+              url: path(`/items/${i}/avatarUrl`),
+              description: path(`/items/${i}/author`),
+              variant: "avatar",
+              fit: "cover",
+            }),
+          ]
+        : [];
+      children.push(add(`meta_${i}`, "Row", { children: [...avatar, author, status] }));
       children.push(text(`dates_${i}`, path(`/items/${i}/dates`), "caption"));
     });
     if (items.length > shown.length) {

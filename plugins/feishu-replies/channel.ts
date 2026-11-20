@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { Avatars } from "./avatars.mjs";
+import { run } from "./cli.mjs";
 
 type Card = {
   id: number;
@@ -22,7 +23,12 @@ type Context = {
   };
 };
 
-export async function renderReply(card: Card, rule: string, stateDir?: string) {
+export async function renderReply(
+  card: Card,
+  rule: string,
+  stateDir?: string,
+  image?: (url: string) => Promise<string | null>,
+) {
   if (card.rule !== rule || card.kind !== "notice" || card.state !== "closed") throw new Error("reply_fyi_required");
   const { renderA2ui, loadView } = await import("./ui.mjs");
   const view = card.text.startsWith("a2ui:")
@@ -44,7 +50,7 @@ export async function renderReply(card: Card, rule: string, stateDir?: string) {
           },
         ],
       };
-  return renderA2ui(view);
+  return renderA2ui(view, { image });
 }
 
 function settings(file: string) {
@@ -63,29 +69,11 @@ function settings(file: string) {
   return {
     rule: config.rule,
     stateDir: config.stateDir,
+    scope: relay.appId || c.profile,
     chatId: relay.chatIds[0],
     profile: c.profile,
     command: command as string[],
   };
-}
-
-function send(command: string[], args: string[], content: string, signal: AbortSignal): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      command[0],
-      [...command.slice(1), ...args],
-      {
-        encoding: "utf8",
-        timeout: 60_000,
-        maxBuffer: 1024 * 1024,
-        windowsHide: true,
-        signal,
-      },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
-    );
-    child.stdin!.on("error", () => {});
-    child.stdin!.end(content);
-  });
 }
 
 // Only output is added here. The existing SDK listener still owns incoming human messages.
@@ -99,9 +87,10 @@ export default async function replies({ hub, options, signal, log }: Context) {
         await hub.delivered(card.id, card.version, card.ref);
         continue;
       }
-      const content = JSON.stringify(await renderReply(card, c.rule, c.stateDir));
+      const avatars = new Avatars({ ...c, signal, log });
+      const content = JSON.stringify(await renderReply(card, c.rule, c.stateDir, (url) => avatars.resolve(url)));
       const result = JSON.parse(
-        await send(
+        await run(
           c.command,
           [
             "im",
