@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { ghRequest } from "./tools.mjs";
-import { canonicalAvatarUrl } from "../../../../plugins/feishu-replies/avatar-url.mjs";
+import { canonicalAvatarUrl } from "@agent-autoloop/feishu-a2ui/avatar-url";
 
 export class PullRequests {
   constructor({ repositoriesFile, github = ghRequest }) {

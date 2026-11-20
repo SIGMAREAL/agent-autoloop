@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { ghRequest } from "./tools.mjs";
+import { issueCreatedView, renderA2ui } from "@agent-autoloop/feishu-a2ui";
 
 function run(program, args, input) {
   return new Promise((resolve, reject) => {
@@ -78,7 +79,12 @@ export function createCardSender({ program, profile, chatIds }, execute = run) {
 
 export async function notifyOne(
   inbox,
-  { repo, sendCard, getIssue = (number) => ghRequest("GET", `repos/${repo}/issues/${number}`) },
+  {
+    repo,
+    sendCard,
+    getIssue = (number) => ghRequest("GET", `repos/${repo}/issues/${number}`),
+    renderView = renderA2ui,
+  },
 ) {
   if (!sendCard) return false;
   const row = inbox.nextCard();
@@ -88,28 +94,7 @@ export async function notifyOne(
   if (!payload) {
     const issue = await getIssue(row.issue);
     if (issue.number !== row.issue || typeof issue.title !== "string") throw new Error("invalid_issue_receipt");
-    const title = Array.from(issue.title).slice(0, 200).join("");
-    payload = JSON.stringify({
-      config: { wide_screen_mode: true },
-      header: {
-        template: "green",
-        title: { tag: "plain_text", content: `已创建 Issue #${row.issue}` },
-      },
-      elements: [
-        { tag: "div", text: { tag: "plain_text", content: title } },
-        {
-          tag: "action",
-          actions: [
-            {
-              tag: "button",
-              type: "primary",
-              text: { tag: "plain_text", content: "查看 Issue" },
-              url: `https://github.com/${repo}/issues/${row.issue}`,
-            },
-          ],
-        },
-      ],
-    });
+    payload = JSON.stringify(await renderView(issueCreatedView(repo, issue)));
     inbox.prepareCard(row.feedback_id, payload);
   }
   const conversationId = inbox.get(row.feedback_id).envelope.source.conversationId;

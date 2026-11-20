@@ -152,7 +152,7 @@ Agent 结束了这一轮，问了你一个问题。它现在不占进程、不�
 
 内置插件随程序安装，填好配置即可启用；第三方插件用 `agent-autoloop add <git 地址>` 安装。
 
-新增：[新 PR 发到指定飞书群](plugins/github-pr-notify/README.md)，通过命令 Agent 与只发送通道接入，不调用模型。
+新增：[新 PR 发到指定飞书群](plugins/github-pr-notify/README.md)，通过命令 Agent 与只发送通道接入，不调用模型。Issue 创建回执、新 PR 通知、PR 查询共用[官方 A2UI 展示与飞书适配器](plugins/feishu-replies/README.md#三个场景共用一套展示)，查询复用多个相同 PR 展示单元。
 
 | 方向 | 内置 | 配置 |
 |---|---|---|

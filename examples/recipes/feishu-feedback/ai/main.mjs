@@ -2,6 +2,8 @@ import { readFileSync, statSync } from "node:fs";
 import { Inbox, createIngress, dispatchOne, reconcileRouting } from "./intake.mjs";
 import { acquireLock } from "../src/runtime.mjs";
 import { createCardSender, notifyOne } from "./notifications.mjs";
+import { renderA2ui } from "@agent-autoloop/feishu-a2ui";
+import { Avatars } from "@agent-autoloop/feishu-a2ui/avatars";
 
 process.umask(0o077);
 const path = process.argv[process.argv.indexOf("--config") + 1];
@@ -36,7 +38,7 @@ if (process.argv.includes("--reconcile-routing") || process.argv.includes("--ret
 const release = acquireLock(config.stateDir);
 const inbox = new Inbox(config.stateDir, config.allowedConversations);
 inbox.recoverCards();
-let sendCard;
+let sendCard, renderView;
 if (config.cardNotifications?.enabled) {
   const relayPath = config.cardNotifications.relayConfig;
   if (!relayPath || statSync(relayPath).mode & 0o077) throw new Error("private_relay_config_required");
@@ -46,6 +48,17 @@ if (config.cardNotifications?.enabled) {
     profile: config.cardNotifications.profile,
     chatIds: relay.chatIds,
   });
+  renderView = (view) => {
+    const avatars = new Avatars({
+      stateDir: config.stateDir,
+      profile: config.cardNotifications.profile,
+      scope: relay.appId || config.cardNotifications.profile,
+      command: [config.cardNotifications.program],
+      signal: AbortSignal.timeout(45_000),
+      log: (detail) => console.log(JSON.stringify({ status: "issue_avatar_unavailable", detail })),
+    });
+    return renderA2ui(view, { image: (url) => avatars.resolve(url) });
+  };
 }
 const server = createIngress({ inbox, token: config.token });
 server.requestTimeout = 30_000;
@@ -69,7 +82,7 @@ const timer = setInterval(async () => {
     }
     if (sendCard && Date.now() >= cardRetryAt) {
       try {
-        const result = await notifyOne(inbox, { repo: config.repo, sendCard });
+        const result = await notifyOne(inbox, { repo: config.repo, sendCard, renderView });
         if (result) console.log(JSON.stringify(result));
       } catch {
         cardRetryAt = Date.now() + 30_000;

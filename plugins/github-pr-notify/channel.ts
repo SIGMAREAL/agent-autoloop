@@ -1,4 +1,5 @@
 import { readConfig, renderCard, run } from "./core.ts";
+import { Avatars } from "@agent-autoloop/feishu-a2ui/avatars";
 
 type Card = { id: number; version: number; ref: string | null; kind: string; state: string; text: string };
 type Context = {
@@ -20,7 +21,15 @@ export default async function channel({ hub, options, signal, log }: Context) {
     try {
       const c = readConfig(String(options.config));
       if (!c.enabled) throw new Error("PR 通知插件已停用");
-      const content = renderCard(c, card);
+      const avatars = new Avatars({
+        stateDir: c.stateDir,
+        profile: c.profile,
+        scope: c.profile,
+        command: c.larkCommand,
+        signal,
+        log,
+      });
+      const content = await renderCard(c, card, card.ref ? {} : { image: (url) => avatars.resolve(url) });
       if (card.ref) {
         await hub.delivered(card.id, card.version, card.ref);
         continue;

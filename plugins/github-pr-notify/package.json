@@ -1,0 +1,12 @@
+{
+  "name": "@agent-autoloop/github-pr-notify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@agent-autoloop/feishu-a2ui": "file:../feishu-replies"
+  }
+}

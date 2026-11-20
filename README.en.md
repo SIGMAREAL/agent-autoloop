@@ -154,7 +154,7 @@ More: [Claude-to-Codex browser handoff](examples/recipes/browser-handoff/README.
 
 Built-in plugins ship with the program and are enabled through configuration. Use `agent-autoloop add <git URL>` for third-party plugins.
 
-New: [send new PRs to a specified Feishu group](plugins/github-pr-notify/README.md), using a command agent and a send-only channel without model calls.
+New: [send new PRs to a specified Feishu group](plugins/github-pr-notify/README.md), using a command agent and a send-only channel without model calls. Issue creation receipts, new PR notices and PR queries share the [official A2UI presentation and Feishu adapter](plugins/feishu-replies/README.md); a query composes the same PR items used by standalone notices.
 
 | Side | Built in | Setup |
 |---|---|---|

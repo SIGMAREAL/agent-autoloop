@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { canonicalAvatarUrl } from "@agent-autoloop/feishu-a2ui/avatar-url";
 
 export type Config = {
   enabled: boolean;
@@ -15,7 +16,18 @@ export type Config = {
   profile: string;
   chatId: string;
 };
-type PR = { repo: string; number: number; title: string; author: string; draft: boolean; createdAt: string };
+type PR = {
+  repo: string;
+  number: number;
+  title: string;
+  author: string;
+  draft: boolean;
+  createdAt: string;
+  avatarUrl: string | null;
+  updatedAt: string | null;
+  state: string;
+  mergedAt: string | null;
+};
 type Event = { id: string; type: string; subject: string; summary: string; detail: string; link: string };
 const REPO = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}\/[a-zA-Z0-9_.-]{1,100}$/;
 const TYPE = "pull_request.opened";
@@ -139,6 +151,16 @@ function validatePR(c: Config, data: any): PR {
     author: text(data.author, 100),
     draft: data.draft,
     createdAt: new Date(data.createdAt).toISOString(),
+    avatarUrl: canonicalAvatarUrl(data.avatarUrl),
+    updatedAt:
+      typeof data.updatedAt === "string" && Number.isFinite(Date.parse(data.updatedAt))
+        ? new Date(data.updatedAt).toISOString()
+        : null,
+    state: data.state === "closed" ? "closed" : "open",
+    mergedAt:
+      typeof data.mergedAt === "string" && Number.isFinite(Date.parse(data.mergedAt))
+        ? new Date(data.mergedAt).toISOString()
+        : null,
   };
 }
 
@@ -182,6 +204,10 @@ export async function poll(
             author: p.user?.login,
             draft: p.draft,
             createdAt: p.created_at,
+            avatarUrl: p.user?.avatar_url,
+            updatedAt: p.updated_at,
+            state: p.state,
+            mergedAt: p.merged_at,
           }),
         );
         for (const item of items) if (cursor === undefined || item.number > cursor) pending.set(item.number, item);
@@ -240,24 +266,17 @@ export function notices(c: Config, context: { events: { source: string; type: st
   }));
 }
 
-export function renderCard(c: Config, card: { kind: string; state: string; text: string }) {
+export async function renderCard(
+  c: Config,
+  card: { kind: string; state: string; text: string },
+  options: {
+    image?: (url: string) => Promise<string | null>;
+  } = {},
+) {
   if (card.kind !== "notice" || card.state !== "closed") throw new Error("通道只发送 PR FYI 通知");
   const payload = JSON.parse(card.text);
   if (payload.schema !== SCHEMA) throw new Error("通道拒绝非 PR 通知");
   const pr = validatePR(c, payload);
-  return {
-    config: { wide_screen_mode: true },
-    header: { template: "blue", title: { tag: "plain_text", content: `新 PR · ${pr.repo} #${pr.number}` } },
-    elements: [
-      { tag: "div", text: { tag: "plain_text", content: pr.title } },
-      {
-        tag: "div",
-        text: { tag: "plain_text", content: `作者：${pr.author}\n${pr.draft ? "草稿 PR" : "PR"} · ${pr.createdAt}` },
-      },
-      {
-        tag: "action",
-        actions: [{ tag: "button", type: "primary", text: { tag: "plain_text", content: "查看 PR" }, url: link(pr) }],
-      },
-    ],
-  };
+  const { pullRequestNotice, renderA2ui } = await import("@agent-autoloop/feishu-a2ui");
+  return renderA2ui(pullRequestNotice(pr), options);
 }
