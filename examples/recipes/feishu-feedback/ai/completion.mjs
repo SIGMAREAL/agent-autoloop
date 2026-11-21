@@ -19,6 +19,11 @@ export function verifyDecisions(config, contextPath) {
       if (!/^[a-f0-9]{64}$/.test(id || "")) throw new Error("invalid_feedback_id");
       const row = db.prepare("SELECT decision FROM feedback WHERE id=?").get(id);
       if (!row?.decision) throw new Error("feedback_decision_missing");
+      if (
+        config.multiIssue &&
+        db.prepare("SELECT 1 FROM feedback_actions WHERE feedback_id=? AND decision IS NULL LIMIT 1").get(id)
+      )
+        throw new Error("feedback_action_incomplete");
     }
   } finally {
     db.close();

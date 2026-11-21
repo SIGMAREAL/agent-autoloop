@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 const privateData = (value) =>
-  /(?:\b(?:cli|oc|ou|om)_[A-Za-z0-9_]+\b|https:\/\/open\.feishu\.cn\/open-apis\/bot\/v2\/hook\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)1[3-9]\d{9}(?!\d)|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})/i.test(
+  /(?:\b(?:cli|oc|ou|om)_[A-Za-z0-9_]+\b|https:\/\/open\.feishu\.cn\/open-apis\/bot\/v2\/hook\/|https:\/\/(?:[a-z0-9-]+\.)*(?:feishu\.cn|larksuite\.com)\/(?:docx|wiki|minutes|notes|doc)\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)1[3-9]\d{9}(?!\d)|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})/i.test(
     value,
   );
 
@@ -44,12 +44,22 @@ export async function ghRequest(
 }
 
 export class FeedbackTools {
-  constructor(inbox, { repo, github = ghRequest }) {
+  constructor(inbox, { repo, github = ghRequest, multiIssue = false }) {
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || "")) throw new Error("invalid_repository");
     this.inbox = inbox;
     this.repo = repo;
     this.github = github;
     this.path = `repos/${repo}/issues`;
+    this.multiIssue = multiIssue === true;
+  }
+  scope(deliveryId, actionKey = null) {
+    if (actionKey !== null && !this.multiIssue) throw new Error("multiple_actions_disabled");
+    return this.inbox.scope(deliveryId, actionKey).row;
+  }
+  async planActions({ deliveryId, actions }) {
+    if (!this.multiIssue) throw new Error("multiple_actions_disabled");
+    const row = this.inbox.planActions(deliveryId, actions);
+    return { deliveryId, decision: row.decision, actionPlan: row.actionPlan, issueNumbers: row.issueNumbers };
   }
   readFeedback({ deliveryId }) {
     const row = this.inbox.get(deliveryId);
@@ -60,6 +70,8 @@ export class FeedbackTools {
           ...row.envelope,
           decision: row.decision,
           issueNumber: row.issueNumber,
+          issueNumbers: row.issueNumbers,
+          actionPlan: row.actionPlan,
         }),
       },
     ];
@@ -87,8 +99,8 @@ export class FeedbackTools {
     }
     return { content };
   }
-  async findIssues({ deliveryId, query = "" }) {
-    this.inbox.get(deliveryId);
+  async findIssues({ deliveryId, query = "", actionKey = null }) {
+    this.scope(deliveryId, actionKey);
     if (typeof query !== "string" || query.length > 200 || /[:\r\n]/.test(query) || privateData(query))
       throw new Error("invalid_search");
     let issues;
@@ -106,7 +118,7 @@ export class FeedbackTools {
         per_page: "50",
       });
     if (!Array.isArray(issues)) throw new Error("github_invalid_response");
-    this.inbox.searched(deliveryId);
+    this.inbox.searched(deliveryId, actionKey);
     return issues
       .filter((i) => !i.pull_request)
       .map((i) => ({
@@ -129,8 +141,8 @@ export class FeedbackTools {
       body: String(issue.body || "").slice(0, 30_000),
     };
   }
-  async reconcile(deliveryId) {
-    const marker = `<!-- petwins-feedback:${deliveryId} -->`;
+  async reconcile(deliveryId, actionKey = null) {
+    const marker = `<!-- petwins-feedback:${deliveryId}${actionKey === null ? "" : ":" + actionKey} -->`;
     for (let page = 1; page <= 2; page++) {
       const issues = await this.github("GET", this.path, {
         state: "all",
@@ -140,13 +152,13 @@ export class FeedbackTools {
         page: String(page),
       });
       const match = issues.find((i) => !i.pull_request && String(i.body || "").includes(marker));
-      if (match) return this.inbox.decide(deliveryId, "created", "Confirmed GitHub write", match.number);
+      if (match) return this.inbox.decide(deliveryId, "created", "Confirmed GitHub write", match.number, actionKey);
       if (issues.length < 100) break;
     }
     throw new Error("issue_write_uncertain");
   }
-  async createIssue({ deliveryId, title, body }) {
-    const row = this.inbox.get(deliveryId);
+  async createIssue({ deliveryId, title, body, actionKey = null }) {
+    const row = this.scope(deliveryId, actionKey);
     if (row.decision === "created") return row;
     if (row.decision) throw new Error("feedback_already_decided");
     if (!row.searched) throw new Error("duplicate_search_required");
@@ -160,11 +172,11 @@ export class FeedbackTools {
     )
       throw new Error("invalid_issue_draft");
     if (privateData(title + "\n" + body)) throw new Error("private_data_in_issue");
-    if (!this.inbox.claimCreate(deliveryId)) return this.reconcile(deliveryId);
+    if (!this.inbox.claimCreate(deliveryId, actionKey)) return this.reconcile(deliveryId, actionKey);
     try {
       const issue = await this.github("POST", this.path, {
         title,
-        body: `${body}\n\n<!-- petwins-feedback:${deliveryId} -->`,
+        body: `${body}\n\n<!-- petwins-feedback:${deliveryId}${actionKey === null ? "" : ":" + actionKey} -->`,
       });
       if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error("github_invalid_response");
       return this.inbox.decide(
@@ -172,13 +184,14 @@ export class FeedbackTools {
         "created",
         "AI classified new feedback after duplicate search",
         issue.number,
+        actionKey,
       );
     } catch {
-      this.inbox.uncertain(deliveryId);
+      this.inbox.uncertain(deliveryId, actionKey);
       throw new Error("issue_write_uncertain");
     }
   }
-  async decide({ deliveryId, decision, reason, issueNumber = null }) {
+  async decide({ deliveryId, decision, reason, issueNumber = null, actionKey = null }) {
     if (
       !["ignored", "needs_info", "duplicate"].includes(decision) ||
       typeof reason !== "string" ||
@@ -186,12 +199,12 @@ export class FeedbackTools {
       reason.length > 1500
     )
       throw new Error("invalid_decision");
-    const row = this.inbox.get(deliveryId);
+    const row = this.scope(deliveryId, actionKey);
     if (row.creationState) throw new Error("issue_write_uncertain");
     if (decision === "duplicate") {
       if (!row.searched) throw new Error("duplicate_search_required");
       await this.readIssue({ issueNumber });
     } else if (issueNumber !== null) throw new Error("invalid_decision");
-    return this.inbox.decide(deliveryId, decision, reason, issueNumber);
+    return this.inbox.decide(deliveryId, decision, reason, issueNumber, actionKey);
   }
 }

@@ -106,13 +106,49 @@ record_decision。没有任意路径、仓库或 API 参数。GitHub 写入仅�
 ### 可选的跨仓库 PR 查询
 
 在私有 AI 配置设置 `prRepositoriesFile`，指向 0600 的 JSON 仓库数组文件，例如
-`["example/app", "example/backend"]`。配置后额外启用只读 `list_pull_requests`；未配置时仍是六工具。
+`["example/app", "example/backend"]`。配置后额外启用只读 `list_pull_requests`；默认仍是六工具，其他可选能力分别开启。
 沿用已授权 PR 通知的仓库范围即可，不把真实清单提交到仓库。
 
 该工具只 GET 白名单仓库的 open PR（含草稿），返回编号、标题、作者、链接及覆盖情况，
 不读代码或 PR 正文，不暴露任意 URL/API。查询有分页、并发与时间上限；某仓库失败或到达
 上限会明确标记 `complete:false`，不能把部分结果说成全量。原有两个写工具的授权保持不变。
 更新 wrapper/MCP 固定代码路径后，下一轮会加载工具；无需另开飞书监听。
+
+### 可选的会议纪要与多任务
+
+```json
+{
+  "documents": {
+    "enabled": true,
+    "program": "/private/bin/lark-cli",
+    "profile": "EXISTING_APP_PROFILE",
+    "identity": "bot"
+  },
+  "multiIssue": true
+}
+```
+
+`documents` 开启只读 `read_shared_document`，只接受授权群中该条原消息分享的飞书
+`/docx/`、`/wiki/` 或 `/minutes/` 链接。复用官方 CLI 的 `docs +fetch` 和
+`minutes +detail`，身份必须明确配置，不会因无权限自动换成个人身份。
+应用只读 scope 与资源分享权限都须满足；权限错误原样报告所缺 scope 的名称，
+不开启全文搜索、编辑、权限申请或音视频下载能力。
+官方 CLI 1.0.100 的这组调用使用 `docx:document:readonly`、`minutes:minutes.basic:read`、
+`minutes:minutes.artifacts:read`；Wiki 链接由同一文档读取入口解析，逐字稿由同一产物入口取得，
+无需额外开启知识库搜索、媒体或编辑权限。妙记尚在生成时明确报告未就绪。
+
+正文保存在 `stateDir/document-snapshots` 的私有快照，绑定原消息与链接；分页和重试读取同一版本，
+返回 revision、snapshotId、coverage、partial 与 nextOffset。AI 必须读完分页再判断覆盖范围。
+文档读取可见 Markdown 和评论；妙记读取摘要、待办、章节与可用逐字稿。缺逐字稿时明确为部分资料，
+不把摘要当整场会议。不自动读取嵌入图片、子文档或关联的其他资源。
+快照与原反馈同属私有资料，备份及保留时一起管理，不写进公开 Issue。
+
+`multiIssue` 开启本地写工具 `plan_actions`。AI 在任何分项写入前冻结 1–50 项任务清单，
+每项用稳定 actionKey 独立查重、记录判断和创建 Issue；中断后读取 actionPlan 续办。
+每项有决策后父消息才算完成。GitHub 标记同时绑定原消息和 actionKey，
+未知写入只查原标记，不重复 POST。成功项分别沿用同一官方 A2UI 工单回执。
+已有消息、单 Issue 标记和原 outbox 不重建；新增表只保存启用后的多任务事实。
+此选项仅为本地任务清单授权写入，未扩大代码、仓库或群消息发送权限。
 
 ## 建单后的原群卡片
 
