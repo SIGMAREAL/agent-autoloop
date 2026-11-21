@@ -95,21 +95,21 @@ export async function notifyOne(
     const issue = await getIssue(row.issue);
     if (issue.number !== row.issue || typeof issue.title !== "string") throw new Error("invalid_issue_receipt");
     payload = JSON.stringify(await renderView(issueCreatedView(repo, issue)));
-    inbox.prepareCard(row.feedback_id, payload);
+    inbox.prepareCard(row.feedback_id, payload, row.action_key ?? null);
   }
   const conversationId = inbox.get(row.feedback_id).envelope.source.conversationId;
-  if (!inbox.claimCard(row.feedback_id)) return false;
+  if (!inbox.claimCard(row.feedback_id, row.action_key ?? null)) return false;
   try {
     const messageId = await sendCard({
       conversationId,
       payload,
       key: `feedback-${row.issue}-${row.feedback_id.slice(0, 24)}`,
     });
-    inbox.finishCard(row.feedback_id, "sent", messageId);
+    inbox.finishCard(row.feedback_id, "sent", messageId, row.action_key ?? null);
     return { status: "issue_card_sent" };
   } catch (error) {
     const state = error.definitelyNotSent ? "rejected" : "uncertain";
-    inbox.finishCard(row.feedback_id, state);
+    inbox.finishCard(row.feedback_id, state, null, row.action_key ?? null);
     return { status: `issue_card_${state}` };
   }
 }

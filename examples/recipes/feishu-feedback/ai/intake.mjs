@@ -28,12 +28,31 @@ export class Inbox {
       CREATE TABLE IF NOT EXISTS resources(feedback_id TEXT NOT NULL, position INTEGER NOT NULL,
         bytes BLOB NOT NULL, PRIMARY KEY(feedback_id,position));
       CREATE TABLE IF NOT EXISTS issue_cards(feedback_id TEXT PRIMARY KEY,issue INTEGER NOT NULL,
-        state TEXT NOT NULL DEFAULT 'pending',payload TEXT,message_id TEXT);`);
+        state TEXT NOT NULL DEFAULT 'pending',payload TEXT,message_id TEXT);
+      CREATE TABLE IF NOT EXISTS feedback_plans(feedback_id TEXT PRIMARY KEY,plan TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS feedback_actions(feedback_id TEXT NOT NULL,action_key TEXT NOT NULL,
+        description TEXT NOT NULL,searched INTEGER NOT NULL DEFAULT 0,decision TEXT,reason TEXT,
+        issue INTEGER,creation_state TEXT,PRIMARY KEY(feedback_id,action_key));
+      CREATE TABLE IF NOT EXISTS action_issue_cards(feedback_id TEXT NOT NULL,action_key TEXT NOT NULL,
+        issue INTEGER NOT NULL,state TEXT NOT NULL DEFAULT 'pending',payload TEXT,message_id TEXT,
+        PRIMARY KEY(feedback_id,action_key));`);
   }
   get(id) {
     if (!isId(id)) throw new Error("invalid_feedback_id");
     const r = this.db.prepare("SELECT * FROM feedback WHERE id=?").get(id);
     if (!r) throw new Error("unknown_feedback");
+    const actionPlan = this.db
+      .prepare("SELECT * FROM feedback_actions WHERE feedback_id=? ORDER BY rowid")
+      .all(id)
+      .map((a) => ({
+        actionKey: a.action_key,
+        description: a.description,
+        searched: Boolean(a.searched),
+        decision: a.decision,
+        reason: a.reason,
+        issueNumber: a.issue,
+        creationState: a.creation_state,
+      }));
     return {
       deliveryId: r.id,
       envelope: JSON.parse(r.envelope),
@@ -44,7 +63,89 @@ export class Inbox {
       reason: r.reason,
       issueNumber: r.issue,
       creationState: r.creation_state,
+      actionPlan,
+      issueNumbers: actionPlan.length
+        ? [...new Set(actionPlan.map((a) => a.issueNumber).filter((n) => n !== null))]
+        : r.issue
+          ? [r.issue]
+          : [],
     };
+  }
+  scope(id, actionKey = null) {
+    const parent = this.get(id);
+    if (actionKey === null) {
+      if (parent.actionPlan.length) throw new Error("action_key_required");
+      return { row: parent, table: "feedback", where: "id=?", params: [id] };
+    }
+    if (typeof actionKey !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(actionKey))
+      throw new Error("invalid_action_key");
+    const row = parent.actionPlan.find((a) => a.actionKey === actionKey);
+    if (!row) throw new Error("unknown_action");
+    return {
+      row: { deliveryId: id, ...row },
+      table: "feedback_actions",
+      where: "feedback_id=? AND action_key=?",
+      params: [id, actionKey],
+    };
+  }
+  planActions(id, actions) {
+    if (
+      !Array.isArray(actions) ||
+      !actions.length ||
+      actions.length > 50 ||
+      actions.some(
+        (a) =>
+          !a ||
+          typeof a.key !== "string" ||
+          !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(a.key) ||
+          typeof a.description !== "string" ||
+          !a.description.trim() ||
+          a.description.length > 2000,
+      ) ||
+      new Set(actions.map((a) => a.key)).size !== actions.length
+    )
+      throw new Error("invalid_action_plan");
+    const plan = JSON.stringify(actions.map(({ key, description }) => ({ key, description })));
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.get(id),
+        old = this.db.prepare("SELECT plan FROM feedback_plans WHERE feedback_id=?").get(id);
+      if (old) {
+        if (old.plan !== plan) throw new Error("action_plan_conflict");
+      } else {
+        if (row.decision || row.creationState) throw new Error("feedback_already_decided");
+        this.db.prepare("INSERT INTO feedback_plans(feedback_id,plan) VALUES (?,?)").run(id, plan);
+        for (const a of actions)
+          this.db
+            .prepare("INSERT INTO feedback_actions(feedback_id,action_key,description) VALUES (?,?,?)")
+            .run(id, a.key, a.description);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.get(id);
+  }
+  finishPlan(id) {
+    const actions = this.get(id).actionPlan;
+    if (!actions.length || actions.some((a) => !a.decision)) return;
+    const decision = ["created", "duplicate", "needs_info", "ignored"].find((d) =>
+      actions.some((a) => a.decision === d),
+    );
+    const issue =
+      actions.find((a) => a.decision === "created")?.issueNumber ??
+      actions.find((a) => a.issueNumber)?.issueNumber ??
+      null;
+    this.db
+      .prepare("UPDATE feedback SET decision=?,reason=?,issue=?,creation_state=? WHERE id=? AND decision IS NULL")
+      .run(
+        decision,
+        `AI 已完成 ${actions.length} 个任务的逐项判断`,
+        issue,
+        decision === "created" ? "created" : null,
+        id,
+      );
   }
   accept(e) {
     if (
@@ -156,12 +257,13 @@ export class Inbox {
   heldRouting() {
     return this.db.prepare("SELECT id,hub_event FROM feedback WHERE state='routing_held'").all();
   }
-  searched(id) {
-    this.get(id);
-    this.db.prepare("UPDATE feedback SET searched=1 WHERE id=?").run(id);
+  searched(id, actionKey = null) {
+    const s = this.scope(id, actionKey);
+    this.db.prepare(`UPDATE ${s.table} SET searched=1 WHERE ${s.where}`).run(...s.params);
   }
-  decide(id, decision, reason, issue = null) {
-    const r = this.get(id);
+  decide(id, decision, reason, issue = null, actionKey = null) {
+    const s = this.scope(id, actionKey),
+      r = s.row;
     if (r.decision) {
       if (r.decision === decision && r.issueNumber === issue) return r;
       throw new Error("feedback_already_decided");
@@ -170,68 +272,100 @@ export class Inbox {
     try {
       const changed = this.db
         .prepare(
-          "UPDATE feedback SET decision=?,reason=?,issue=?,creation_state=CASE WHEN ?='created' THEN 'created' ELSE creation_state END WHERE id=? AND decision IS NULL",
+          `UPDATE ${s.table} SET decision=?,reason=?,issue=?,creation_state=CASE WHEN ?='created' THEN 'created' ELSE creation_state END WHERE ${s.where} AND decision IS NULL`,
         )
-        .run(decision, reason, issue, decision, id).changes;
+        .run(decision, reason, issue, decision, ...s.params).changes;
       if (!changed) throw new Error("feedback_already_decided");
-      if (decision === "created") this.queueCard(id);
+      if (decision === "created") this.queueCard(id, actionKey);
+      if (actionKey !== null) this.finishPlan(id);
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
     }
-    return this.get(id);
+    return this.scope(id, actionKey).row;
   }
-  queueCard(id) {
-    const r = this.get(id);
+  queueCard(id, actionKey = null) {
+    const r = this.scope(id, actionKey).row;
     if (r.decision !== "created" || !Number.isSafeInteger(r.issueNumber) || r.issueNumber < 1)
       throw new Error("created_issue_required");
-    this.db.prepare("INSERT OR IGNORE INTO issue_cards(feedback_id,issue) VALUES (?,?)").run(id, r.issueNumber);
+    if (actionKey === null)
+      this.db.prepare("INSERT OR IGNORE INTO issue_cards(feedback_id,issue) VALUES (?,?)").run(id, r.issueNumber);
+    else
+      this.db
+        .prepare("INSERT OR IGNORE INTO action_issue_cards(feedback_id,action_key,issue) VALUES (?,?,?)")
+        .run(id, actionKey, r.issueNumber);
   }
   nextCard() {
-    return this.db.prepare("SELECT * FROM issue_cards WHERE state='pending' ORDER BY rowid LIMIT 1").get();
+    return this.db
+      .prepare(
+        `SELECT feedback_id,issue,state,payload,message_id,NULL AS action_key,0 AS lane,rowid AS position
+      FROM issue_cards WHERE state='pending' UNION ALL
+      SELECT feedback_id,issue,state,payload,message_id,action_key,1 AS lane,rowid AS position
+      FROM action_issue_cards WHERE state='pending' ORDER BY lane,position LIMIT 1`,
+      )
+      .get();
   }
-  prepareCard(id, payload) {
+  cardScope(id, actionKey = null) {
+    this.scope(id, actionKey);
+    return actionKey === null
+      ? { table: "issue_cards", where: "feedback_id=?", params: [id] }
+      : { table: "action_issue_cards", where: "feedback_id=? AND action_key=?", params: [id, actionKey] };
+  }
+  prepareCard(id, payload, actionKey = null) {
+    const s = this.cardScope(id, actionKey);
     this.db
-      .prepare("UPDATE issue_cards SET payload=? WHERE feedback_id=? AND state='pending' AND payload IS NULL")
-      .run(payload, id);
+      .prepare(`UPDATE ${s.table} SET payload=? WHERE ${s.where} AND state='pending' AND payload IS NULL`)
+      .run(payload, ...s.params);
   }
-  claimCard(id) {
+  claimCard(id, actionKey = null) {
+    const s = this.cardScope(id, actionKey);
     return (
-      this.db.prepare("UPDATE issue_cards SET state='sending' WHERE feedback_id=? AND state='pending'").run(id)
+      this.db.prepare(`UPDATE ${s.table} SET state='sending' WHERE ${s.where} AND state='pending'`).run(...s.params)
         .changes > 0
     );
   }
-  finishCard(id, state, messageId = null) {
+  finishCard(id, state, messageId = null, actionKey = null) {
+    const s = this.cardScope(id, actionKey);
     this.db
-      .prepare("UPDATE issue_cards SET state=?,message_id=? WHERE feedback_id=? AND state='sending'")
-      .run(state, messageId, id);
+      .prepare(`UPDATE ${s.table} SET state=?,message_id=? WHERE ${s.where} AND state='sending'`)
+      .run(state, messageId, ...s.params);
   }
   recoverCards() {
     this.db.prepare("UPDATE issue_cards SET state='uncertain' WHERE state='sending'").run();
+    this.db.prepare("UPDATE action_issue_cards SET state='uncertain' WHERE state='sending'").run();
   }
   retryRejectedCards() {
-    return this.db.prepare("UPDATE issue_cards SET state='pending' WHERE state='rejected'").run().changes;
+    return (
+      this.db.prepare("UPDATE issue_cards SET state='pending' WHERE state='rejected'").run().changes +
+      this.db.prepare("UPDATE action_issue_cards SET state='pending' WHERE state='rejected'").run().changes
+    );
   }
   cardCounts() {
     return Object.fromEntries(
       this.db
-        .prepare("SELECT state,COUNT(*) AS count FROM issue_cards GROUP BY state")
+        .prepare(
+          "SELECT state,COUNT(*) AS count FROM (SELECT state FROM issue_cards UNION ALL SELECT state FROM action_issue_cards) GROUP BY state",
+        )
         .all()
         .map((r) => [r.state, r.count]),
     );
   }
-  claimCreate(id) {
+  claimCreate(id, actionKey = null) {
+    const s = this.scope(id, actionKey);
     return (
       this.db
         .prepare(
-          "UPDATE feedback SET creation_state='creating' WHERE id=? AND creation_state IS NULL AND decision IS NULL",
+          `UPDATE ${s.table} SET creation_state='creating' WHERE ${s.where} AND creation_state IS NULL AND decision IS NULL`,
         )
-        .run(id).changes > 0
+        .run(...s.params).changes > 0
     );
   }
-  uncertain(id) {
-    this.db.prepare("UPDATE feedback SET creation_state='uncertain' WHERE id=? AND decision IS NULL").run(id);
+  uncertain(id, actionKey = null) {
+    const s = this.scope(id, actionKey);
+    this.db
+      .prepare(`UPDATE ${s.table} SET creation_state='uncertain' WHERE ${s.where} AND decision IS NULL`)
+      .run(...s.params);
   }
   counts() {
     return Object.fromEntries(

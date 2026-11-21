@@ -382,6 +382,23 @@ test("an explicit no-Issue decision and known private data cannot create public 
   assert.equal(gh.calls.filter((c) => c.method === "POST").length, 0);
 });
 
+test("private meeting links stay local instead of leaking into public Issue drafts", async (t) => {
+  const { inbox } = fixture(t),
+    gh = github();
+  inbox.accept(envelope());
+  const tools = new FeedbackTools(inbox, { repo: "example/repo", github: gh.request });
+  await tools.findIssues({ deliveryId: id, query: "导出" });
+  await assert.rejects(
+    tools.createIssue({
+      deliveryId: id,
+      title: "修复导出",
+      body: "会议原文：https://my.feishu.cn/docx/abcdefghijklmnopqrstuvwxyz1",
+    }),
+    /private_data_in_issue/,
+  );
+  assert.equal(gh.calls.filter((c) => c.method === "POST").length, 0);
+});
+
 test("keywords and topic labels do not gate the AI's Issue decision", async (t) => {
   const { inbox } = fixture(t),
     gh = github();

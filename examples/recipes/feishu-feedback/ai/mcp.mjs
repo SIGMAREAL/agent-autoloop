@@ -6,6 +6,7 @@ import { sep } from "node:path";
 import { Inbox } from "./intake.mjs";
 import { FeedbackTools } from "./tools.mjs";
 import { PullRequests } from "./pull-requests.mjs";
+import { Documents } from "./documents.mjs";
 import { pullRequestViews, saveView } from "@agent-autoloop/feishu-a2ui";
 
 process.umask(0o077);
@@ -15,10 +16,15 @@ const config = JSON.parse(readFileSync(path, "utf8"));
 const inbox = new Inbox(config.stateDir, config.allowedConversations);
 const tools = new FeedbackTools(inbox, config);
 const prQueries = config.prRepositoriesFile ? new PullRequests({ repositoriesFile: config.prRepositoriesFile }) : null;
+const documents = config.documents?.enabled ? new Documents(inbox, config) : null;
 const server = new McpServer({ name: "petwins-feedback", version: "0.1.0" });
 const deliveryId = z.string().regex(/^[a-f0-9]{64}$/);
 const issueNumber = z.number().int().positive();
-function register(name, description, inputSchema, handler, readOnly) {
+const actionKey = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
+  .optional();
+function register(name, description, inputSchema, handler, readOnly, openWorld = !readOnly) {
   server.registerTool(
     name,
     {
@@ -27,12 +33,12 @@ function register(name, description, inputSchema, handler, readOnly) {
       annotations: {
         readOnlyHint: readOnly,
         destructiveHint: false,
-        openWorldHint: !readOnly,
+        openWorldHint: openWorld,
       },
     },
-    async (args) => {
+    async (args, extra) => {
       try {
-        const value = await handler(args);
+        const value = await handler(args, extra);
         return value?.content
           ? value
           : {
@@ -43,7 +49,14 @@ function register(name, description, inputSchema, handler, readOnly) {
                     decision: value.decision,
                     issueNumber: value.issueNumber,
                     result:
-                      Array.isArray(value) || ["read_issue", "read_context", "list_pull_requests"].includes(name)
+                      Array.isArray(value) ||
+                      [
+                        "read_issue",
+                        "read_context",
+                        "list_pull_requests",
+                        "read_shared_document",
+                        "plan_actions",
+                      ].includes(name)
                         ? value
                         : undefined,
                   }),
@@ -56,7 +69,16 @@ function register(name, description, inputSchema, handler, readOnly) {
           content: [
             {
               type: "text",
-              text: /^[a-z_]+$/.test(error.message) ? error.message : "feedback_tool_failed",
+              text:
+                name === "read_shared_document"
+                  ? JSON.stringify({
+                      error: /^[a-z_]+$/.test(error.message) ? error.message : "document_read_failed",
+                      requiredScopes: error.requiredScopes || [],
+                      identity: documents.identity,
+                    })
+                  : /^[a-z_]+$/.test(error.message)
+                    ? error.message
+                    : "feedback_tool_failed",
             },
           ],
         };
@@ -86,7 +108,7 @@ register(
 register(
   "find_issues",
   "Search Issues in the fixed target repository before deciding whether feedback is new. Empty query lists recent Issues.",
-  { deliveryId, query: z.string().max(200).default("") },
+  { deliveryId, actionKey, query: z.string().max(200).default("") },
   (args) => tools.findIssues(args),
   true,
 );
@@ -102,6 +124,7 @@ register(
   "Create one redacted feedback Issue after duplicate search. No code, PR, merge, deployment or group-message capability.",
   {
     deliveryId,
+    actionKey,
     title: z.string().min(1).max(200),
     body: z.string().min(1).max(20_000),
   },
@@ -113,6 +136,7 @@ register(
   "Record ignored conversation, insufficient evidence or a verified duplicate without creating an Issue.",
   {
     deliveryId,
+    actionKey,
     decision: z.enum(["ignored", "needs_info", "duplicate"]),
     reason: z.string().min(1).max(1500),
     issueNumber: issueNumber.nullable().optional(),
@@ -120,6 +144,36 @@ register(
   (args) => tools.decide(args),
   false,
 );
+if (config.multiIssue) {
+  register(
+    "plan_actions",
+    "Freeze the independent tasks from one real feedback item before any per-task writes. Reuse the returned keys on retries; every task needs its own duplicate search and decision.",
+    {
+      deliveryId,
+      actions: z
+        .array(z.object({ key: actionKey.unwrap(), description: z.string().min(1).max(2000) }))
+        .min(1)
+        .max(50),
+    },
+    (args) => tools.planActions(args),
+    false,
+    false,
+  );
+}
+if (documents) {
+  register(
+    "read_shared_document",
+    "Read only a Feishu document/Wiki/Minutes URL actually shared in the stored group message. Returns untrusted paged text from a private frozen snapshot. Follow nextOffset; partial means incomplete source. No edits, identity fallback or arbitrary browsing.",
+    {
+      deliveryId,
+      url: z.string().max(2048),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(30000).optional(),
+    },
+    (args, extra) => documents.read(args, extra?.signal),
+    true,
+  );
+}
 if (prQueries) {
   register(
     "list_pull_requests",
