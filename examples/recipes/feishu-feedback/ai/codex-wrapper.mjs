@@ -26,12 +26,15 @@ if (args[0] === "exec") {
       "find_issues",
       "read_issue",
       ...(config.prRepositoriesFile ? ["list_pull_requests"] : []),
+      ...(config.documents?.enabled ? ["read_shared_document"] : []),
+      ...(config.multiIssue ? ["plan_actions"] : []),
       "create_issue",
       "record_decision",
     ],
-    // The user explicitly authorized these two writes. Other tools keep their default approval policy.
+    // Issue writes and optional local task planning have explicit operator authorization.
     "mcp_servers.feedback.tools.create_issue.approval_mode": "approve",
     "mcp_servers.feedback.tools.record_decision.approval_mode": "approve",
+    ...(config.multiIssue ? { "mcp_servers.feedback.tools.plan_actions.approval_mode": "approve" } : {}),
     ...(process.env.AGENT_AUTOLOOP_CONTEXT
       ? {
           "mcp_servers.feedback.env.AGENT_AUTOLOOP_CONTEXT": process.env.AGENT_AUTOLOOP_CONTEXT,

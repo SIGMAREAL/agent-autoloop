@@ -49,6 +49,8 @@ test("feedback Codex preauthorizes only the two approved writes while retaining 
       model: "example",
       effort: "high",
       prRepositoriesFile: join(dir, "private-repos.json"),
+      documents: { enabled: true },
+      multiIssue: true,
     }),
     { mode: 0o600 },
   );
@@ -64,6 +66,10 @@ test("feedback Codex preauthorizes only the two approved writes while retaining 
   );
   const enabled = configured.find((v) => v.startsWith("mcp_servers.feedback.enabled_tools="));
   assert.ok(JSON.parse(enabled.split("=")[1]).includes("list_pull_requests"));
+  assert.ok(JSON.parse(enabled.split("=")[1]).includes("read_shared_document"));
+  assert.ok(JSON.parse(enabled.split("=")[1]).includes("plan_actions"));
+  assert.ok(configured.includes('mcp_servers.feedback.tools.plan_actions.approval_mode="approve"'));
+  assert.ok(!configured.some((v) => v.includes("tools.read_shared_document.approval_mode")));
   assert.ok(
     !configured.some((v) => v.includes("tools.list_pull_requests.approval_mode")),
     "read-only lookup gets no new write approval",
