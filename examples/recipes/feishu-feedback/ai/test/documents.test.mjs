@@ -209,18 +209,29 @@ test("cancelling the official npm-style wrapper also stops its native child", as
     execFileSync(process.execPath,[new URL('./leaf.mjs',import.meta.url).pathname],{stdio:'inherit'});`,
   );
   const ready = join(f.dir, "ready"),
-    finished = join(f.dir, "finished");
+    finished = join(f.dir, "finished"),
+    cancelling = join(f.dir, "cancelling");
   writeFileSync(
     join(f.dir, "leaf.mjs"),
-    `import {writeFileSync} from 'node:fs';
+    `import {writeFileSync,existsSync} from 'node:fs';
     writeFileSync(${JSON.stringify(ready)},'ready');
-    setTimeout(()=>writeFileSync(${JSON.stringify(finished)},'continued after cancellation'),700);`,
+    const timer=setInterval(()=>{if(existsSync(${JSON.stringify(cancelling)})){
+      clearInterval(timer);setTimeout(()=>writeFileSync(${JSON.stringify(finished)},'continued after cancellation'),700);
+    }},10);`,
   );
   const controller = new AbortController();
   const read = f.reader.read({ deliveryId: id, url: doc }, controller.signal);
-  for (let i = 0; i < 100 && !existsSync(ready); i++) await new Promise((r) => setTimeout(r, 20));
-  assert.ok(existsSync(ready));
-  controller.abort();
-  await assert.rejects(read, /document_read_cancelled/);
-  assert.equal(existsSync(finished), false, "the native subprocess must not continue after cancellation");
+  read.catch(() => {});
+  try {
+    for (let i = 0; i < 500 && !existsSync(ready); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(existsSync(ready));
+    writeFileSync(cancelling, "cancel");
+    controller.abort();
+    await assert.rejects(read, /document_read_cancelled/);
+    assert.equal(existsSync(finished), false, "the native subprocess must not continue after cancellation");
+  } finally {
+    writeFileSync(cancelling, "cancel");
+    controller.abort();
+    await read.catch(() => {});
+  }
 });
