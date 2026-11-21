@@ -197,7 +197,7 @@ export class Documents {
         const e = raw.error || {};
         const minute = link.kind === "minutes" ? raw.data?.minutes?.[0] : null;
         if (minute?.status === "processing" && minute.retryable === true) throw new Error("document_not_ready");
-        if (minute && /\b2091005\b/.test(minute.error || ""))
+        if (minute && /\b2091005\b|^No read permission for minute\b/.test(minute.error || ""))
           throw Object.assign(new Error("document_permission_required"), {
             requiredScopes: [],
             identity: this.identity,

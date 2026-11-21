@@ -173,7 +173,8 @@ test("real Minutes partial-failure envelopes distinguish processing and resource
         minutes: [
           {
             minute_token: "obcexampleminutes123456789",
-            error: "failed to query minute: [2091005] permission denied",
+            error:
+              "No read permission for minute obcexampleminutes123456789. Ask the user before running: minutes +apply-permission ...",
           },
         ],
       },
