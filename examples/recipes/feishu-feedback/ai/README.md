@@ -133,6 +133,9 @@ record_decision。没有任意路径、仓库或 API 参数。GitHub 写入仅�
 `minutes +detail`，身份必须明确配置，不会因无权限自动换成个人身份。
 应用只读 scope 与资源分享权限都须满足；权限错误原样报告所缺 scope 的名称，
 不开启全文搜索、编辑、权限申请或音视频下载能力。
+官方 CLI 1.0.100 的这组调用使用 `docx:document:readonly`、`minutes:minutes.basic:read`、
+`minutes:minutes.artifacts:read`；Wiki 链接由同一文档读取入口解析，逐字稿由同一产物入口取得，
+无需额外开启知识库搜索、媒体或编辑权限。妙记尚在生成时明确报告未就绪。
 
 正文保存在 `stateDir/document-snapshots` 的私有快照，绑定原消息与链接；分页和重试读取同一版本，
 返回 revision、snapshotId、coverage、partial 与 nextOffset。AI 必须读完分页再判断覆盖范围。

@@ -2,7 +2,7 @@
 // as complete, replay reads a changed meeting, or a transcript path/CLI process escapes private bounded storage.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Inbox } from "../intake.mjs";
@@ -112,6 +112,7 @@ test("Minutes include requested artifacts and a bounded transcript from a privat
   assert.match(result.text, /修复导出/);
   const [args] = readFileSync(calls, "utf8").trim().split("\n").map(JSON.parse);
   for (const flag of ["+detail", "--summary", "--todo", "--chapter", "--transcript"]) assert.ok(args.includes(flag));
+  assert.equal(args[args.indexOf("--output-dir") + 1], ".", "official CLI output paths must be relative");
 });
 
 test("permission failures are explicit and never switch to personal identity; missing transcripts stay partial", async (t) => {
@@ -143,6 +144,44 @@ test("permission failures are explicit and never switch to personal identity; mi
   assert.ok(!readFileSync(calls, "utf8").includes('"user"'));
 });
 
+test("real Minutes partial-failure envelopes distinguish processing and resource access", async (t) => {
+  const f = await fixture(t, null, minute);
+  writeFileSync(
+    f.source,
+    JSON.stringify({
+      ok: false,
+      identity: "bot",
+      data: {
+        minutes: [
+          {
+            minute_token: "obcexampleminutes123456789",
+            status: "processing",
+            retryable: true,
+            error: "artifacts are generating",
+          },
+        ],
+      },
+    }),
+  );
+  await assert.rejects(f.reader.read({ deliveryId: id, url: minute }), /document_not_ready/);
+  writeFileSync(
+    f.source,
+    JSON.stringify({
+      ok: false,
+      identity: "bot",
+      data: {
+        minutes: [
+          {
+            minute_token: "obcexampleminutes123456789",
+            error: "failed to query minute: [2091005] permission denied",
+          },
+        ],
+      },
+    }),
+  );
+  await assert.rejects(f.reader.read({ deliveryId: id, url: minute }), /document_permission_required/);
+});
+
 test("a transcript outside the private output directory is rejected", async (t) => {
   const { reader } = await fixture(
     t,
@@ -160,4 +199,27 @@ test("CLI output and cancellation are bounded and leave no running read", async 
     blocked.reader.read({ deliveryId: id, url: doc }, AbortSignal.timeout(40)),
     /document_read_cancelled|document_read_timeout/,
   );
+});
+
+test("cancelling the official npm-style wrapper also stops its native child", async (t) => {
+  const f = await fixture(
+    t,
+    `import {execFileSync} from 'node:child_process';
+    execFileSync(process.execPath,[new URL('./leaf.mjs',import.meta.url).pathname],{stdio:'inherit'});`,
+  );
+  const ready = join(f.dir, "ready"),
+    finished = join(f.dir, "finished");
+  writeFileSync(
+    join(f.dir, "leaf.mjs"),
+    `import {writeFileSync} from 'node:fs';
+    writeFileSync(${JSON.stringify(ready)},'ready');
+    setTimeout(()=>writeFileSync(${JSON.stringify(finished)},'continued after cancellation'),700);`,
+  );
+  const controller = new AbortController();
+  const read = f.reader.read({ deliveryId: id, url: doc }, controller.signal);
+  for (let i = 0; i < 100 && !existsSync(ready); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.ok(existsSync(ready));
+  controller.abort();
+  await assert.rejects(read, /document_read_cancelled/);
+  assert.equal(existsSync(finished), false, "the native subprocess must not continue after cancellation");
 });

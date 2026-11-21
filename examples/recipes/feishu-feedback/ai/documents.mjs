@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, lstatSync, readFileSync, writeFileSync, mkdtempSync, rmSync, realpathSync } from "node:fs";
-import { isAbsolute, join, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const MAX_OUTPUT = 2 * 1024 * 1024,
@@ -50,23 +50,43 @@ function sharedLinks(message) {
   return links;
 }
 
-function run(command, args, signal) {
+function run(command, args, signal, cwd) {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("document_read_cancelled"));
     const child = spawn(command[0], [...command.slice(1), ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
+      detached: process.platform !== "win32",
+      cwd,
     });
     let stdout = "",
       stderr = "",
       bytes = 0,
       failure,
-      timer;
+      timer,
+      treeStop;
+    const kill = (signal) => {
+      if (!child.pid) return;
+      // The official npm entry waits on a native child with inherited pipes.
+      if (process.platform === "win32") {
+        treeStop ??= new Promise((done) => {
+          spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
+            .once("error", done)
+            .once("close", done);
+        });
+      } else {
+        try {
+          process.kill(-child.pid, signal);
+        } catch (e) {
+          if (e.code !== "ESRCH") throw e;
+        }
+      }
+    };
     const stop = (message) => {
       if (failure) return;
       failure = message;
-      child.kill("SIGTERM");
-      timer = setTimeout(() => child.kill("SIGKILL"), 1000);
+      kill("SIGTERM");
+      timer = setTimeout(() => kill("SIGKILL"), 1000);
       timer.unref();
     };
     const abort = () =>
@@ -88,9 +108,10 @@ function run(command, args, signal) {
     child.once("error", () => {
       failure ||= "document_cli_unavailable";
     });
-    child.once("close", () => {
+    child.once("close", async () => {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort);
+      await treeStop;
       if (failure) return reject(new Error(failure));
       for (const value of [stdout, stderr]) {
         const start = value.indexOf("{");
@@ -167,16 +188,23 @@ export class Documents {
               "--chapter",
               "--transcript",
               "--output-dir",
-              output,
+              ".",
             ]
           : ["docs", "+fetch", ...base, "--doc", link.url, "--doc-format", "markdown"];
-      const raw = await run(this.command, args, signal);
+      const raw = await run(this.command, args, signal, output);
       if (raw.identity && raw.identity !== this.identity) throw new Error("document_identity_mismatch");
       if (raw.ok !== true) {
         const e = raw.error || {};
+        const minute = link.kind === "minutes" ? raw.data?.minutes?.[0] : null;
+        if (minute?.status === "processing" && minute.retryable === true) throw new Error("document_not_ready");
+        if (minute && /\b2091005\b/.test(minute.error || ""))
+          throw Object.assign(new Error("document_permission_required"), {
+            requiredScopes: [],
+            identity: this.identity,
+          });
         if (e.type === "authorization")
           throw Object.assign(new Error("document_permission_required"), {
-            requiredScopes: (e.missing_scopes || []).filter(
+            requiredScopes: (Array.isArray(e.missing_scopes) ? e.missing_scopes : []).filter(
               (s) => typeof s === "string" && /^[a-z0-9_:.-]{1,150}$/.test(s),
             ),
             identity: this.identity,
@@ -211,8 +239,9 @@ export class Documents {
       let transcript = "";
       if (a.transcript_file) {
         if (typeof a.transcript_file !== "string") throw new Error("unsafe_transcript_path");
-        const st = lstatSync(a.transcript_file),
-          real = realpathSync(a.transcript_file);
+        const transcriptPath = resolve(output, a.transcript_file);
+        const st = lstatSync(transcriptPath),
+          real = realpathSync(transcriptPath);
         if (!st.isFile() || !real.startsWith(realpathSync(output) + sep)) throw new Error("unsafe_transcript_path");
         if (st.size > MAX_OUTPUT) throw new Error("document_output_too_large");
         transcript = readFileSync(real, "utf8");
