@@ -38,11 +38,13 @@ Codex 最后输出：
 
 使用 [A2UI 1.0](https://a2ui.org/concepts/sdks/) 的官方 Basic Catalog；`ui.mjs` 通过官方 MessageProcessor 校验协议和组件，再通过 NodeResolver 解析数据绑定，最后自行生成飞书 JSON 2.0。协议与绑定没有自行重写。
 
-目前支持 Column、Row、Text、Divider、Button 和头像 Image；Button 仅支持官方 openUrl，目标限 GitHub Issue、PR、仓库 PR 列表及作者资料。拒绝其他组件和动作，不执行 HTML、脚本或回调，不增加监听。此为单次快照适配，尚未实现 A2UI 增量更新、表单或双向交互。
+目前支持 Column、Row、Text、Divider、Button 和头像 Image；Button 仅支持官方 openUrl，目标限 GitHub Issue、PR、对应评论、仓库 PR 列表及作者资料。拒绝其他组件和动作，不执行 HTML、脚本或回调，不增加监听。此为单次快照适配，尚未实现 A2UI 协议增量更新、表单或双向交互；结果通知通过飞书 API 用新的完整快照更新同一消息。
 
 ## 三个场景共用一套展示
 
 `github-view.mjs` 是唯一的 GitHub 单条展示定义：`githubItem` 归一化资料，`githubView` 组合 A2UI 组件。`pullRequestNotice` 展示一个 PR，`pr-view.mjs` 只负责查询摘要、分页和组合多个相同 PR；`issueCreatedView` 复用同一套标题、作者头像与资料链接、状态、创建/更新时间和入口按钮。三处均调用 `ui.mjs` 中的官方 Core 与飞书适配器，不另写飞书卡片模板。
+
+`issueResultView` 复用同一单条定义，增加简短结果和实际 PR／评论入口，处理时间使用通知配置的显式时区。通知选择、收据和原卡更新由独立的 `ithaca-results` 插件负责。
 
 修改 `github-view.mjs` 的条目结构或 `ui.mjs` 的样式映射，三个场景一起生效。资料不夹带飞书组件；时间明确为上海时间，缺失值显示未知。查询每页 8 条，最多 10 页；超限列明展示数量和完整仓库入口，查询失败仓库单独标注。
 

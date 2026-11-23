@@ -154,6 +154,8 @@ Agent 结束了这一轮，问了你一个问题。它现在不占进程、不�
 
 新增：[新 PR 发到指定飞书群](plugins/github-pr-notify/README.md)，通过命令 Agent 与只发送通道接入，不调用模型。Issue 创建回执、新 PR 通知、PR 查询共用[官方 A2UI 展示与飞书适配器](plugins/feishu-replies/README.md#三个场景共用一套展示)，查询复用多个相同 PR 展示单元。
 
+[Ithaca 处理结果通知](plugins/ithaca-results/README.md)复用同一 A2UI 样式。每个 Issue 确实关闭、补充或创建 PR 后发一条；后续结果变化更新原卡，过程状态保持安静。
+
 | 方向 | 内置 | 配置 |
 |---|---|---|
 | **事件**：怎么发现新活 | [GitHub Webhook](plugins/github/source.ts)、[GitLab Webhook](plugins/gitlab/source.ts)、[HTTP 接口](docs/protocol.md#来源把世界变成事件)、[定时规则](skills/agent-autoloop/SKILL.md#改规则)、[Issue 轮询脚本](examples/watch-github-issues.sh) | [说明](skills/agent-autoloop/SKILL.md#接一个事件插件) |

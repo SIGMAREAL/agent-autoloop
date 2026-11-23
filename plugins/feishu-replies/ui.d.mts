@@ -15,3 +15,4 @@ export function pullRequestNotice(pr: {
   mergedAt?: string | null;
 }): any;
 export function issueCreatedView(repository: string, issue: any): any;
+export function issueResultView(result: any): any;
