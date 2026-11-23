@@ -17,10 +17,12 @@ try {
     author:i.input?.user?.login,avatarUrl:i.input?.user?.avatar_url,
     createdAt:i.input?.created_at,updatedAt:i.input?.updated_at,resultAt:dates.get(i.id)||i.at,
     summary:i.decision?.summary,reason:i.decision?.reason,blocker:blocker(i.error),comment:i.comment?{html_url:i.comment.html_url}:null,
-    triageAttempts:i.triageAttempts,pr:i.pr?{state:i.pr.state,green:i.pr.green,failed:i.pr.failed,head:i.pr.head}:null
+    triageAttempts:i.triageAttempts,pr:i.pr?{state:i.pr.state,green:i.pr.green,failed:i.pr.failed,head:i.pr.head,
+      hasChangeRequests:Array.isArray(i.pr.changes)?i.pr.changes.length>0:null}:null
   }));
   const tasks=rows('tasks').map(t=>({id:t.id,state:t.state,prUrl:t.prUrl,attempts:t.attempts,blocker:blocker(t.error),resultAt:dates.get(t.id),
-    result:t.result?{summary:t.result.summary,headSha:t.result.headSha,limitations:t.result.limitations}:null}));
+    result:t.result?{summary:t.result.summary,headSha:t.result.headSha,limitations:t.result.limitations,
+      hostVerified:Array.isArray(t.result.checks)&&t.result.checks.length>0&&t.result.checks.every(c=>c.exitCode===0)&&t.result.review?.approved===true&&Array.isArray(t.result.review.findings)&&t.result.review.findings.length===0}:null}));
   db.exec('COMMIT');
   console.log(JSON.stringify({project:run.project,run:{id:run.id,state:run.state,deadline:run.deadline},items,tasks}));
 } finally {db.close();}`;
