@@ -2,14 +2,14 @@ import { MessageProcessor, NodeResolver, ResolvedBinding, getValue } from "@a2ui
 import { basicCatalog } from "@a2ui/web_core/catalogs/basic/v1";
 import { isAvatarUrl } from "./avatar-url.mjs";
 export { pullRequestViews } from "./pr-view.mjs";
-export { pullRequestNotice, issueCreatedView } from "./github-view.mjs";
+export { pullRequestNotice, issueCreatedView, issueResultView } from "./github-view.mjs";
 export { saveView, loadView } from "./artifacts.mjs";
 
 const supported = new Set(["Column", "Row", "Text", "Divider", "Button", "Image"]);
 function navigation(url) {
   if (
     typeof url !== "string" ||
-    !/^https:\/\/github\.com\/(?:apps\/[A-Za-z0-9-]{1,100}|[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\/[A-Za-z0-9_.-]{1,100}\/(?:(?:pull|issues)\/[1-9]\d*|pulls))?)$/.test(
+    !/^https:\/\/github\.com\/(?:apps\/[A-Za-z0-9-]{1,100}|[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\/[A-Za-z0-9_.-]{1,100}\/(?:(?:pull|issues)\/[1-9]\d*(?:#issuecomment-[1-9]\d*)?|pulls))?)$/.test(
       url,
     )
   )

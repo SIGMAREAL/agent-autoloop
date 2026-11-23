@@ -7,6 +7,41 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ui = () => import("../ui.mjs");
+test("Issue result cards reuse the shared GitHub layout and expose only result navigation", async () => {
+  const { issueResultView, renderA2ui } = await ui();
+  assert.equal(typeof issueResultView, "function");
+  const card = await renderA2ui(
+    issueResultView({
+      repo: "example/app",
+      number: 24,
+      title: "An Issue",
+      outcome: "pr",
+      status: "已创建 PR",
+      summary: "已完成修复",
+      reason: "<at id=all>仅作为文字</at>",
+      author: "alice",
+      prUrl: "https://github.com/example/app/pull/9",
+      createdAt: "2026-11-22T05:00:00Z",
+      updatedAt: "2026-11-22T06:00:00Z",
+      timeZone: "America/Los_Angeles",
+    }),
+  );
+  const json = JSON.stringify(card);
+  for (const value of [
+    "已创建 PR",
+    "已完成修复",
+    "https://github.com/example/app/issues/24",
+    "https://github.com/example/app/pull/9",
+    "作者：alice",
+  ])
+    assert.ok(json.includes(value), value);
+  assert.equal(card.schema, "2.0");
+  assert.ok(
+    card.body.elements.some(
+      (e) => e.tag === "div" && e.text.tag === "plain_text" && e.text.content.includes("<at id=all>"),
+    ),
+  );
+});
 const result = {
   queriedAt: "2026-11-20T01:00:00.000Z",
   complete: true,

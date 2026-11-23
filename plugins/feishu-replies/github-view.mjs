@@ -74,6 +74,7 @@ export function githubView({ title, items, summary, empty, footer }) {
         ]
       : [];
     itemChildren.push(add(`meta_${i}`, "Row", { children: [...avatar, author, status] }));
+    if (item.detail) itemChildren.push(text(`detail_${i}`, path(`/items/${i}/detail`)));
     itemChildren.push(text(`dates_${i}`, path(`/items/${i}/dates`), "caption"));
     children.push(add(`item_${i}`, "Column", { children: itemChildren }));
   });
@@ -116,5 +117,24 @@ export function issueCreatedView(repository, issue) {
         updatedAt: issue.updated_at,
       }),
     ],
+  });
+}
+
+export function issueResultView(result) {
+  const item = githubItem("issue", result.repo, result);
+  item.status = result.status;
+  item.detail = [result.summary, result.reason].filter(Boolean).join("\n\n");
+  const timeZone = result.timeZone || "America/Los_Angeles";
+  const at = result.resultAt || result.updatedAt;
+  item.dates = Number.isFinite(Date.parse(at))
+    ? `处理结果：${new Intl.DateTimeFormat("sv-SE", { timeZone, dateStyle: "short", timeStyle: "short" }).format(new Date(at))} · ${timeZone}`
+    : "处理时间：未知";
+  const links = [];
+  if (result.prUrl) links.push({ label: "查看 PR", url: result.prUrl });
+  if (result.commentUrl) links.push({ label: "查看处理说明", url: result.commentUrl });
+  return githubView({
+    title: `${result.status} · ${result.repo} #${result.number}`,
+    items: [item],
+    ...(links.length ? { footer: { text: "Ithaca 处理结果", links } } : {}),
   });
 }

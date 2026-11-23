@@ -19,6 +19,10 @@
     "./avatar-url": {
       "types": "./avatar-url.d.mts",
       "default": "./avatar-url.mjs"
+    },
+    "./cli": {
+      "types": "./cli.d.mts",
+      "default": "./cli.mjs"
     }
   },
   "engines": {

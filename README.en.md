@@ -156,6 +156,8 @@ Built-in plugins ship with the program and are enabled through configuration. Us
 
 New: [send new PRs to a specified Feishu group](plugins/github-pr-notify/README.md), using a command agent and a send-only channel without model calls. Issue creation receipts, new PR notices and PR queries share the [official A2UI presentation and Feishu adapter](plugins/feishu-replies/README.md); a query composes the same PR items used by standalone notices.
 
+[Ithaca result notifications](plugins/ithaca-results/README.md) reuse that A2UI layout. Confirmed closure, enrichment or PR creation sends one message; later result changes update that message while intermediate work stays silent.
+
 | Side | Built in | Setup |
 |---|---|---|
 | **Events**: how work is found | [GitHub Webhook](plugins/github/source.ts), [GitLab Webhook](plugins/gitlab/source.ts), [HTTP API](docs/protocol.md#来源把世界变成事件), [cron rules](skills/agent-autoloop/SKILL.md#改规则), [issue polling script](examples/watch-github-issues.sh) | [Guide](skills/agent-autoloop/SKILL.md#接一个事件插件) |
