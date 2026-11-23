@@ -147,8 +147,22 @@ test("the read-only snapshot omits raw bodies and comments while retaining resul
       },
       decision: { summary: "Summary", reason: "Reason" },
       error: "PR head changed outside verified Owner PRIVATE_ERROR_DETAIL",
+      pr: { state: "open", changes: [{ body: "PRIVATE_REVIEW_CHANGE_BODY" }] },
     }),
   );
+  for (const exitCode of [0, 1])
+    db.prepare("INSERT INTO tasks VALUES(?,?)").run(
+      String(exitCode),
+      JSON.stringify({
+        id: String(exitCode),
+        state: "review",
+        result: {
+          headSha: "a".repeat(40),
+          checks: [{ exitCode, stdoutPath: "PRIVATE_CHECK_LOG" }],
+          review: { approved: true, findings: [], summary: "PRIVATE_REVIEW_DETAIL" },
+        },
+      }),
+    );
   db.close();
   const before = readFileSync(file);
   const stdout = execFileSync(process.execPath, ["--input-type=module"], {
@@ -159,6 +173,11 @@ test("the read-only snapshot omits raw bodies and comments while retaining resul
   assert.equal(JSON.parse(stdout).items[0].summary, "Summary");
   assert.equal(JSON.parse(stdout).items[0].blocker, "pr-head-changed");
   assert.ok(!stdout.includes("PRIVATE_ERROR_DETAIL"));
+  assert.equal(JSON.parse(stdout).tasks[0].result.hostVerified, true);
+  assert.equal(JSON.parse(stdout).tasks[1].result.hostVerified, false);
+  assert.equal(JSON.parse(stdout).items[0].pr.hasChangeRequests, true);
+  assert.ok(!stdout.includes("PRIVATE_REVIEW_CHANGE_BODY"));
+  assert.ok(!stdout.includes("PRIVATE_CHECK_LOG") && !stdout.includes("PRIVATE_REVIEW_DETAIL"));
   assert.deepEqual(readFileSync(file), before);
   assert.throws(() =>
     execFileSync(process.execPath, ["--input-type=module"], {
@@ -195,6 +214,37 @@ test("current blockers and GitHub terminal states replace historical PR success"
   s.tasks[0].state = "blocked";
   s.tasks[0].blocker = "pr-closed";
   assert.equal(selectResults(s, config)[0].status, "PR 已关闭（未合并）");
+});
+
+test("a verified PR held by CI does not claim development or host verification is incomplete", async () => {
+  const { selectResults } = await load();
+  const head = "a".repeat(40);
+  const s = snapshot({
+    ...issue("needs-human"),
+    taskIds: ["task-1"],
+    blocker: "execution",
+    pr: { state: "open", head, green: false, failed: true, hasChangeRequests: false },
+  } as any);
+  s.tasks = [
+    {
+      id: "task-1",
+      state: "review",
+      prUrl: "https://github.com/example/app/pull/9",
+      result: { summary: "Implemented", headSha: head, hostVerified: true },
+    },
+  ];
+  const result = selectResults(s, config)[0];
+  assert.equal(result.outcome, "human");
+  assert.match(result.summary, /本机检查.*独立审查.*通过/);
+  assert.match(result.reason, /GitHub CI.*PR.*检查/);
+  assert.ok(!result.reason.includes("开发或验证未完成"));
+  assert.equal(result.prUrl, s.tasks[0].prUrl);
+  (s.items[0] as any).pr.hasChangeRequests = true;
+  assert.match(selectResults(s, config)[0].reason, /Reviewer.*修改/);
+  assert.ok(!selectResults(s, config)[0].reason.includes("处理后重跑"));
+  (s.items[0] as any).pr.hasChangeRequests = false;
+  s.tasks[0].result.hostVerified = false;
+  assert.ok(!selectResults(s, config)[0].summary.includes("本机检查"));
 });
 
 test("an unknown send receipt is held beyond native UUID validity instead of creating another card", async (t) => {

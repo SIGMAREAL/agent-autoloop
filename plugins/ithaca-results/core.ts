@@ -140,12 +140,26 @@ export function selectResults(snapshot: any, c: Pick<Config, "project" | "reposi
             : i.pr?.failed
               ? "CI：未通过，等待修复；尚未合并。"
               : "CI：未确认通过；等待人工 Review，尚未合并。";
-    const blocker = outcome === "human" ? i.blocker || blocked?.blocker || (blocked ? "execution" : null) : null;
+    const rawBlocker = i.blocker || blocked?.blocker || (blocked ? "execution" : null);
+    const verifiedPR =
+      outcome === "human" &&
+      !blocked &&
+      t?.state === "review" &&
+      t.result?.hostVerified === true &&
+      typeof t.result.headSha === "string" &&
+      i.pr?.state === "open" &&
+      i.pr.head === t.result.headSha &&
+      (!rawBlocker || rawBlocker === "execution");
+    const ciOnly = verifiedPR && i.pr.hasChangeRequests === false && i.pr.green !== true;
+    const reviewBlocked = verifiedPR && i.pr.hasChangeRequests === true;
+    const blocker = outcome === "human" ? (reviewBlocked ? "review" : ciOnly ? "ci" : rawBlocker) : null;
     const blockers: Record<string, string> = {
       "pr-head-changed": "PR 提交已由其他操作改变，需要人工检查。",
       authorization: "改动超出当前持续授权，需要人工处理。",
       cleanup: "上一轮进程清理状态未确认，已停止自动重试。",
       execution: "开发或验证未完成，需要人工检查运行记录。",
+      ci: "GitHub CI 尚未通过，请打开 PR 的检查页查看失败说明，处理后重跑。",
+      review: "GitHub Reviewer 要求修改，请打开 PR 查看审查意见并处理。",
     };
     return [
       {
@@ -155,11 +169,15 @@ export function selectResults(snapshot: any, c: Pick<Config, "project" | "reposi
         title: clip(i.title, 200),
         outcome,
         status,
-        summary: blocker
-          ? t
-            ? "自动处理已停下，原有 PR 已保留。"
-            : "自动处理已停下，原有工作记录已保留。"
-          : clip((outcome === "pr" ? t?.result?.summary : null) || i.summary, 300),
+        summary: reviewBlocked
+          ? "本机验证已通过，PR 有待处理的审查意见。"
+          : ciOnly
+            ? "本机检查与独立审查已通过，PR 等待 GitHub CI。"
+            : blocker
+              ? t
+                ? "自动处理已停下，原有 PR 已保留。"
+                : "自动处理已停下，原有工作记录已保留。"
+              : clip((outcome === "pr" ? t?.result?.summary : null) || i.summary, 300),
         reason: clip(blocker ? blockers[blocker] || blockers.execution : outcome === "pr" ? ci : i.reason, 500),
         author: clip(i.author, 80),
         avatarUrl: i.avatarUrl,
