@@ -48,6 +48,8 @@ function register(name, description, inputSchema, handler, readOnly, openWorld =
                   text: JSON.stringify({
                     decision: value.decision,
                     issueNumber: value.issueNumber,
+                    attachmentStatus: value.attachmentStatus,
+                    reason: value.reason,
                     result:
                       Array.isArray(value) ||
                       [
@@ -105,6 +107,14 @@ register(
   (args) => tools.readFeedback(args),
   true,
 );
+if (config.media?.ffmpegProgram)
+  register(
+    "read_video_frames",
+    "Inspect sampled timestamped frames from an original stored recording. Only stored attachment indexes, no paths or URLs. Up to six timestamps per call; samples do not prove continuous playback or audio.",
+    { deliveryId, index: z.number().int().min(0).max(9), seconds: z.array(z.number().min(0).max(7200)).min(1).max(6) },
+    (args) => tools.readVideoFrames(args),
+    true,
+  );
 register(
   "find_issues",
   "Search Issues in the fixed target repository before deciding whether feedback is new. Empty query lists recent Issues.",
@@ -127,6 +137,10 @@ register(
     actionKey,
     title: z.string().min(1).max(200),
     body: z.string().min(1).max(20_000),
+    attachments: z
+      .array(z.object({ deliveryId, index: z.number().int().min(0).max(9) }))
+      .max(10)
+      .optional(),
   },
   (args) => tools.createIssue(args),
   false,

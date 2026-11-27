@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createMediaIssue, readVideoFrames, mediaExtensions, checkMediaProgram } from "./media.mjs";
 
 const privateData = (value) =>
   /(?:\b(?:cli|oc|ou|om)_[A-Za-z0-9_]+\b|https:\/\/open\.feishu\.cn\/open-apis\/bot\/v2\/hook\/|https:\/\/(?:[a-z0-9-]+\.)*(?:feishu\.cn|larksuite\.com)\/(?:docx|wiki|minutes|notes|doc)\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)1[3-9]\d{9}(?!\d)|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})/i.test(
@@ -44,13 +45,18 @@ export async function ghRequest(
 }
 
 export class FeedbackTools {
-  constructor(inbox, { repo, github = ghRequest, multiIssue = false }) {
+  constructor(inbox, { repo, github = ghRequest, multiIssue = false, media, mediaCreate = createMediaIssue }) {
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || "")) throw new Error("invalid_repository");
     this.inbox = inbox;
     this.repo = repo;
     this.github = github;
     this.path = `repos/${repo}/issues`;
     this.multiIssue = multiIssue === true;
+    this.media = media;
+    this.mediaCreate = mediaCreate;
+  }
+  readVideoFrames(args) {
+    return readVideoFrames(this.inbox, args, this.media);
   }
   scope(deliveryId, actionKey = null) {
     if (actionKey !== null && !this.multiIssue) throw new Error("multiple_actions_disabled");
@@ -157,7 +163,7 @@ export class FeedbackTools {
     }
     throw new Error("issue_write_uncertain");
   }
-  async createIssue({ deliveryId, title, body, actionKey = null }) {
+  async createIssue({ deliveryId, title, body, actionKey = null, attachments = [] }) {
     const row = this.scope(deliveryId, actionKey);
     if (row.decision === "created") return row;
     if (row.decision) throw new Error("feedback_already_decided");
@@ -172,20 +178,48 @@ export class FeedbackTools {
     )
       throw new Error("invalid_issue_draft");
     if (privateData(title + "\n" + body)) throw new Error("private_data_in_issue");
+    if (!Array.isArray(attachments) || attachments.length > 10) throw new Error("invalid_issue_attachments");
+    const conversation = this.inbox.get(deliveryId).envelope.source.conversationId;
+    const seen = new Set();
+    const files = attachments
+      .map((ref) => {
+        if (!Number.isSafeInteger(ref.index) || ref.index < 0) throw new Error("invalid_attachment_index");
+        const source = this.inbox.get(ref.deliveryId);
+        if (source.envelope.source.conversationId !== conversation) throw new Error("attachment_conversation_mismatch");
+        const item = source.envelope.attachments[ref.index];
+        if (item?.status !== "available" || !mediaExtensions[item.mimeType])
+          throw new Error("unsupported_issue_attachment");
+        if (!this.media?.ghProgram) throw new Error("media_program_required");
+        const bytes = this.inbox.readAttachment(ref.deliveryId, ref.index);
+        if (seen.has(item.sha256)) return null;
+        seen.add(item.sha256);
+        return { bytes, mimeType: item.mimeType };
+      })
+      .filter(Boolean);
+    if (files.length && this.mediaCreate === createMediaIssue) await checkMediaProgram(this.media);
     if (!this.inbox.claimCreate(deliveryId, actionKey)) return this.reconcile(deliveryId, actionKey);
     try {
-      const issue = await this.github("POST", this.path, {
+      const draft = {
         title,
         body: `${body}\n\n<!-- petwins-feedback:${deliveryId}${actionKey === null ? "" : ":" + actionKey} -->`,
-      });
+      };
+      const issue = files.length
+        ? await this.mediaCreate({ repo: this.repo, ...draft, files }, this.media)
+        : await this.github("POST", this.path, draft);
       if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error("github_invalid_response");
-      return this.inbox.decide(
+      const result = this.inbox.decide(
         deliveryId,
         "created",
-        "AI classified new feedback after duplicate search",
+        issue.attachmentsComplete === false
+          ? "Issue created; attachment upload incomplete"
+          : "AI classified new feedback after duplicate search",
         issue.number,
         actionKey,
       );
+      return {
+        ...result,
+        ...(files.length ? { attachmentStatus: issue.attachmentsComplete ? "uploaded" : "incomplete" } : {}),
+      };
     } catch {
       this.inbox.uncertain(deliveryId, actionKey);
       throw new Error("issue_write_uncertain");

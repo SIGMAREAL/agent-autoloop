@@ -48,6 +48,34 @@ node main.mjs --config /private/ai.json
 SQLite 事务中落盘后才应答；本地资源文件是可恢复缓存。向 Autoloop 投递时复用
 同一 event.id。已接收但未路由的事件记录为 `routing_held`，不堵塞后续反馈。
 
+图片和录屏每条消息的原件总量上限为 50 MiB，保持在既有 72 MiB JSON 接口预算内。
+MP4/MOV/WebM 保留原字节和视频类型。可选媒体配置使用固定的本机程序：
+
+```json
+{
+  "media": {
+    "ghProgram": "/private/gh-2.106.0/bin/gh",
+    "ffmpegProgram": "/private/ffmpeg"
+  }
+}
+```
+
+`read_video_frames` 仅按持久附件编号读取，每次最多六个明确时间点，返回带时间戳的
+JPEG 采样；不运行附件中的程序，不访问视频内的网络资源，不把采样说成连续观看或听过音频。
+`create_issue.attachments` 由 AI 选择同群真实消息的图片/录屏，使用官方
+[`gh issue create --attach`](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli)
+上传为 GitHub 原生附件。该程序须支持 `--attach` 并复用已登录的用户身份；旧 CLI 在
+写入领取前被拒绝，不会误记为未知建单。不会改动系统级 `gh` 或复制登录凭据。
+
+模型只能指定 `deliveryId + index`，不能指定文件路径、其他会话、仓库或上传网址。
+上传前核对持久字节摘要，临时文件使用程序生成的名称。CLI 部分上传失败但已创建工单时，
+保存真实编号并报告 `incomplete`，不重建 Issue。PDF/ZIP 等非媒体仍作为 AI 资料，不宣称已上传。
+附件须适合目标仓库的读者；不要将含无关个人信息的完整录屏机械附上。
+
+被旧上限拒绝的历史资源可由操作员从同一消息重新读取，经 `Inbox.recoverAttachment`
+补充到独立恢复记录，保留原投递摘要、原状态和判断。仅在确认原 `needs_info` 尚未建单时，
+操作员可用 `reconsiderRecoveredMedia` 记录旧判断并重新交办；两方法均不暴露给模型。
+
 ## Autoloop 配置
 
 在既有安装中使用独立反馈工作目录；`rules.json` 保留用户其他规则，新增反馈规则。

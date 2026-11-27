@@ -172,9 +172,9 @@ test("attachment bytes stay private and opaque; traversal names cannot choose a 
   );
 });
 
-test("the full 5 MiB attachment limit is accepted and larger resources are rejected", (t) => {
+test("the full 50 MiB attachment limit is accepted and larger resources are rejected", (t) => {
   const { inbox } = fixture(t),
-    bytes = Buffer.alloc(5 * 1024 * 1024, 42);
+    bytes = Buffer.alloc(50 * 1024 * 1024, 42);
   const media = (value) => [
     {
       status: "available",
