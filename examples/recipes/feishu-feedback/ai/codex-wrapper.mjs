@@ -23,6 +23,7 @@ if (args[0] === "exec") {
     "mcp_servers.feedback.enabled_tools": [
       "read_context",
       "read_feedback",
+      ...(config.media?.ffmpegProgram ? ["read_video_frames"] : []),
       "find_issues",
       "read_issue",
       ...(config.prRepositoriesFile ? ["list_pull_requests"] : []),

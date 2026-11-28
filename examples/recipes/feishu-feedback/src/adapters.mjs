@@ -1,3 +1,5 @@
+import { MAX_MEDIA_BYTES } from "../limits.mjs";
+
 function parse(m) {
   try {
     return JSON.parse(m.content);
@@ -18,7 +20,7 @@ export function createBoundedHttp(http, { timeoutMs = RESOURCE_TIMEOUT_MS, signa
   }
   return wrapped;
 }
-async function readResource(client, messageId, key, type, { timeoutMs, signal }) {
+async function readResource(client, messageId, key, type, { timeoutMs, signal, maxBytes }) {
   signal?.throwIfAborted();
   const response = await client.im.messageResource.get({
     path: { message_id: messageId, file_key: key },
@@ -38,7 +40,7 @@ async function readResource(client, messageId, key, type, { timeoutMs, signal })
   try {
     for await (const chunk of stream) {
       size += chunk.length;
-      if (size > 5 * 1024 * 1024) throw new Error("resource_too_large");
+      if (size > maxBytes) throw new Error("resource_too_large");
       chunks.push(Buffer.from(chunk));
     }
   } finally {
@@ -53,9 +55,14 @@ function mime(data) {
   if (data[0] === 255 && data[1] === 216 && data[2] === 255) return "image/jpeg";
   if (data.subarray(0, 4).toString() === "RIFF" && data.subarray(8, 12).toString() === "WEBP") return "image/webp";
   if (/^GIF8[79]a/.test(data.subarray(0, 6).toString())) return "image/gif";
+  if (data.subarray(4, 8).toString() === "ftyp")
+    return data.subarray(8, 12).toString() === "qt  " ? "video/quicktime" : "video/mp4";
+  if (data.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return "video/webm";
   return "application/octet-stream";
 }
-export function createMediaReader(client, { timeoutMs = RESOURCE_TIMEOUT_MS, signal } = {}) {
+export function createMediaReader(client, { timeoutMs = 120_000, signal, maxBytes = MAX_MEDIA_BYTES } = {}) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_MEDIA_BYTES)
+    throw new Error("invalid_media_limit");
   return async (m) => {
     const c = parse(m);
     const resources = [];
@@ -75,13 +82,19 @@ export function createMediaReader(client, { timeoutMs = RESOURCE_TIMEOUT_MS, sig
       walk(c);
     } else return [{ status: "unavailable", reason: "unsupported_message_resource" }];
     const files = [];
+    let remaining = maxBytes;
     for (const resource of resources.slice(0, 10)) {
       if (!resource.key) {
         files.push({ status: "unavailable", reason: "missing_resource_key" });
         continue;
       }
       try {
-        const data = await readResource(client, m.message_id, resource.key, resource.type, { timeoutMs, signal });
+        const data = await readResource(client, m.message_id, resource.key, resource.type, {
+          timeoutMs,
+          signal,
+          maxBytes: remaining,
+        });
+        remaining -= data.length;
         files.push({
           status: "available",
           name: String(resource.name).slice(0, 200),

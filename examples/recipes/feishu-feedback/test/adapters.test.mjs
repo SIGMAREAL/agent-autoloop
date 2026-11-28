@@ -29,15 +29,18 @@ test("downloads file bytes as data using the message resource API", async () => 
   assert.equal(Buffer.from(file.base64, "base64").toString(), "fixture");
 });
 test("download has a strict byte limit", async () => {
-  const media = createMediaReader({
-    im: {
-      messageResource: {
-        get: async () => ({
-          getReadableStream: () => Readable.from([Buffer.alloc(6 * 1024 * 1024)]),
-        }),
+  const media = createMediaReader(
+    {
+      im: {
+        messageResource: {
+          get: async () => ({
+            getReadableStream: () => Readable.from([Buffer.alloc(6 * 1024 * 1024)]),
+          }),
+        },
       },
     },
-  });
+    { maxBytes: 5 * 1024 * 1024 },
+  );
   const [file] = await media({
     message_id: "m",
     message_type: "image",
@@ -46,6 +49,21 @@ test("download has a strict byte limit", async () => {
   assert.equal(file.status, "unavailable");
   assert.equal(file.reason, "resource_too_large");
   assert.equal(file.base64, undefined);
+});
+test("a recording above 5 MiB is retained with its actual video media type", async () => {
+  const bytes = Buffer.alloc(6 * 1024 * 1024);
+  bytes.write("ftypisom", 4);
+  const reader = createMediaReader({
+    im: { messageResource: { get: async () => ({ getReadableStream: () => Readable.from([bytes]) }) } },
+  });
+  const [file] = await reader({
+    message_id: "m",
+    message_type: "media",
+    content: JSON.stringify({ file_key: "key", file_name: "screen.mp4" }),
+  });
+  assert.equal(file.status, "available");
+  assert.equal(file.mimeType, "video/mp4");
+  assert.deepEqual(Buffer.from(file.base64, "base64"), bytes);
 });
 test("forwarder is absent until configured; never chooses a model or provider", () => {
   assert.equal(createForwarder(), null);

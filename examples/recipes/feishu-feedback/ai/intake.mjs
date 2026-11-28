@@ -3,10 +3,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdirSync, chmodSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
 import { createServer } from "node:http";
+import { MAX_MEDIA_BYTES } from "../limits.mjs";
 
 export const isId = (value) => /^[a-f0-9]{64}$/.test(value || "");
 const digest = (value) => createHash("sha256").update(value).digest("hex");
-const MAX_RESOURCE = 5 * 1024 * 1024;
+const MAX_RESOURCE = MAX_MEDIA_BYTES;
 const MAX_BODY = 72 * 1024 * 1024;
 
 export class Inbox {
@@ -27,6 +28,10 @@ export class Inbox {
         issue INTEGER, creation_state TEXT);
       CREATE TABLE IF NOT EXISTS resources(feedback_id TEXT NOT NULL, position INTEGER NOT NULL,
         bytes BLOB NOT NULL, PRIMARY KEY(feedback_id,position));
+      CREATE TABLE IF NOT EXISTS recovered_resources(feedback_id TEXT NOT NULL,position INTEGER NOT NULL,
+        metadata TEXT NOT NULL,PRIMARY KEY(feedback_id,position));
+      CREATE TABLE IF NOT EXISTS media_recovery_decisions(feedback_id TEXT NOT NULL,decision TEXT NOT NULL,
+        reason TEXT NOT NULL,recovered_from TEXT NOT NULL,at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS issue_cards(feedback_id TEXT PRIMARY KEY,issue INTEGER NOT NULL,
         state TEXT NOT NULL DEFAULT 'pending',payload TEXT,message_id TEXT);
       CREATE TABLE IF NOT EXISTS feedback_plans(feedback_id TEXT PRIMARY KEY,plan TEXT NOT NULL);
@@ -53,9 +58,14 @@ export class Inbox {
         issueNumber: a.issue,
         creationState: a.creation_state,
       }));
+    const envelope = JSON.parse(r.envelope);
+    for (const recovery of this.db
+      .prepare("SELECT position,metadata FROM recovered_resources WHERE feedback_id=?")
+      .all(id))
+      envelope.attachments[recovery.position] = JSON.parse(recovery.metadata);
     return {
       deliveryId: r.id,
-      envelope: JSON.parse(r.envelope),
+      envelope,
       state: r.state,
       hubEvent: r.hub_event,
       searched: Boolean(r.searched),
@@ -188,6 +198,8 @@ export class Inbox {
         bytes,
       };
     });
+    if (resources.reduce((sum, a) => sum + (a.bytes?.length || 0), 0) > MAX_MEDIA_BYTES)
+      throw new Error("invalid_attachment");
     const folder = join(this.dir, "resources", e.deliveryId);
     mkdirSync(folder, { recursive: true, mode: 0o700 });
     const attachments = resources.map((a, index) => {
@@ -243,6 +255,69 @@ export class Inbox {
       writeFileSync(a.path, bytes, { mode: 0o600 });
     }
     return bytes;
+  }
+  // Operator-only recovery: retain the original intake digest, envelope and decisions.
+  // This method is deliberately absent from the model's MCP tool set.
+  recoverAttachment(id, index, { bytes, mimeType }) {
+    const row = this.get(id),
+      previous = row.envelope.attachments[index];
+    if (!Number.isSafeInteger(index) || index < 0 || !previous) throw new Error("invalid_attachment_index");
+    if (previous.status !== "unavailable") throw new Error("attachment_already_available");
+    if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_MEDIA_BYTES || typeof mimeType !== "string")
+      throw new Error("invalid_attachment");
+    const total = row.envelope.attachments.reduce((n, a) => n + (a.status === "available" ? a.size : 0), 0);
+    if (total + bytes.length > MAX_MEDIA_BYTES) throw new Error("invalid_attachment");
+    const metadata = {
+      status: "available",
+      name: "recovered-recording",
+      mimeType,
+      path: join(this.dir, "resources", id, String(index)),
+      size: bytes.length,
+      sha256: digest(bytes),
+      recovered: true,
+    };
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("INSERT INTO resources(feedback_id,position,bytes) VALUES (?,?,?)").run(id, index, bytes);
+      this.db
+        .prepare("INSERT INTO recovered_resources(feedback_id,position,metadata) VALUES (?,?,?)")
+        .run(id, index, JSON.stringify(metadata));
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.get(id).envelope.attachments[index];
+  }
+  reconsiderRecoveredMedia(id, recoveredFrom) {
+    const row = this.get(id),
+      source = this.get(recoveredFrom);
+    if (
+      row.decision !== "needs_info" ||
+      row.creationState ||
+      row.actionPlan.length ||
+      row.envelope.source.conversationId !== source.envelope.source.conversationId ||
+      !source.envelope.attachments.some((a) => a.recovered)
+    )
+      throw new Error("media_reconsideration_not_allowed");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO media_recovery_decisions(feedback_id,decision,reason,recovered_from,at) VALUES (?,?,?,?,?)",
+        )
+        .run(id, row.decision, row.reason, recoveredFrom, new Date().toISOString());
+      this.db
+        .prepare(
+          "UPDATE feedback SET decision=NULL,reason=NULL,searched=0 WHERE id=? AND decision='needs_info' AND creation_state IS NULL",
+        )
+        .run(id);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.get(id);
   }
   pending() {
     const r = this.db.prepare("SELECT id FROM feedback WHERE state='pending' ORDER BY rowid LIMIT 1").get();
